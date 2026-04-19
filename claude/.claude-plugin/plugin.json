@@ -1,0 +1,30 @@
+{
+  "name": "nightshift",
+  "version": "1.0.0",
+  "description": "Multi-agent development discipline on top of Claude Code + Codex CLI. Contracts before code, hard gates before acceptance, evidence before trust, event log before any mutable state.",
+  "author": {
+    "name": "ksokolovsky",
+    "url": "https://github.com/3d-wiki-admin/nightshift"
+  },
+  "homepage": "https://github.com/3d-wiki-admin/nightshift",
+  "license": "MIT",
+  "keywords": [
+    "agents",
+    "multi-agent",
+    "codex",
+    "orchestration",
+    "audit",
+    "spec-kit",
+    "overnight"
+  ],
+  "categories": ["development", "workflow", "productivity"],
+  "requires": {
+    "claude-code": ">=1.0.0",
+    "node": ">=22"
+  },
+  "optional_integrations": {
+    "codex-cli": "Enables GPT-5.x implementer via router (§6.1)",
+    "launchd": "Enables overnight pinger + morning digest on macOS",
+    "1password-cli": "Enables OnePasswordBackend for secrets"
+  }
+}
