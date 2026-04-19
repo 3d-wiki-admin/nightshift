@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.nightshift.pinger</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>node "$NIGHTSHIFT_HOME/core/scripts/health-ping.mjs" "$NIGHTSHIFT_ACTIVE_PROJECT" &gt;&gt; "$HOME/.nightshift/logs/pinger.log" 2&gt;&amp;1</string>
+  </array>
+
+  <!-- Every 30 minutes -->
+  <key>StartInterval</key>
+  <integer>1800</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NIGHTSHIFT_HOME</key>
+    <string>__NIGHTSHIFT_HOME__</string>
+    <key>NIGHTSHIFT_ACTIVE_PROJECT</key>
+    <string>__NIGHTSHIFT_ACTIVE_PROJECT__</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>__HOME__/.nightshift/logs/pinger.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/.nightshift/logs/pinger.err.log</string>
+</dict>
+</plist>
