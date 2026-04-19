@@ -8,15 +8,15 @@ coverage/
 .env.local
 .env.*.local
 
-# runtime state (dogfood)
+# runtime state (dogfood at repo root only — examples/ is checked in)
 .nightshift/
-tasks/events.ndjson
-tasks/state.json
-tasks/waves/
-tasks/history/
-tasks/paused.md
-tasks/decisions.md
-tasks/questions.md
+/tasks/events.ndjson
+/tasks/state.json
+/tasks/waves/
+/tasks/history/
+/tasks/paused.md
+/tasks/decisions.md
+/tasks/questions.md
 
 # tooling
 .vercel/

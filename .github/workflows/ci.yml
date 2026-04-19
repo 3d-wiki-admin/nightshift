@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Unit tests (event store, scripts, secrets, provisioners)
+        run: |
+          node --test \
+            core/event-store/test/*.test.mjs \
+            core/scripts/test/*.test.mjs \
+            core/secrets/test/*.test.mjs \
+            core/provisioners/test/*.test.mjs
+      - name: Replay sample fixture
+        run: |
+          node core/scripts/replay-events.mjs core/event-store/test/fixtures/sample.ndjson --compact \
+            | node -e 'let s=""; process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s); if (j.waves[1].tasks.DEMO_001.status !== "accepted") process.exit(1)})'
+      - name: Shell syntax check
+        run: |
+          for f in core/scripts/*.sh claude/hooks/*.sh claude/hooks/lib/*.sh scripts/*.sh; do
+            bash -n "$f" || { echo "syntax error: $f"; exit 1; }
+          done

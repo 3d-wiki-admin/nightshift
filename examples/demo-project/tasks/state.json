@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "built_from_event_id": "ev_01HXYZ000000000000000AAZ",
+  "built_at": "2026-04-19T13:49:30.776Z",
+  "session_id": "sess_01HXYZ000000000000000001",
+  "project": {
+    "name": "demo",
+    "constitution_version": 1
+  },
+  "context_zone": "green",
+  "waves": {
+    "1": {
+      "status": "accepted",
+      "checkpoint_tag": "wave-1-end-20260419-0000",
+      "started_at": "2026-04-19T00:00:02.000Z",
+      "ended_at": "2026-04-19T00:00:46.000Z",
+      "tasks": {
+        "DEMO_001": {
+          "status": "accepted",
+          "risk_class": "safe",
+          "parallel_marker": null,
+          "model": "gpt-5.4",
+          "effort": "default",
+          "retries": 0,
+          "lease": null,
+          "gates": {
+            "tests": "pass",
+            "types": "pass",
+            "lint": "pass",
+            "build": "pass"
+          },
+          "quality_score": 0.92,
+          "tokens": {
+            "context-packer": {
+              "in": 1800,
+              "out": 900,
+              "cost": 0.02
+            },
+            "implementer": {
+              "in": 12030,
+              "out": 2180,
+              "cost": 0.19
+            },
+            "task-impl-reviewer": {
+              "in": 8900,
+              "out": 1400,
+              "cost": 0.08
+            }
+          },
+          "evidence_folder": "tasks/waves/1/DEMO_001/evidence/",
+          "last_event_ts": "2026-04-19T00:00:26.000Z"
+        },
+        "DEMO_002": {
+          "status": "accepted",
+          "risk_class": "safe",
+          "parallel_marker": "[P]",
+          "model": "gpt-5.4",
+          "effort": "default",
+          "retries": 0,
+          "lease": null,
+          "gates": {
+            "tests": "pass",
+            "types": "pass"
+          },
+          "quality_score": 0.9,
+          "tokens": {
+            "context-packer": {
+              "in": 1600,
+              "out": 800,
+              "cost": 0.02
+            },
+            "implementer": {
+              "in": 8200,
+              "out": 1500,
+              "cost": 0.11
+            },
+            "task-impl-reviewer": {
+              "in": 7200,
+              "out": 1100,
+              "cost": 0.06
+            }
+          },
+          "evidence_folder": "tasks/waves/1/DEMO_002/evidence/",
+          "last_event_ts": "2026-04-19T00:00:44.000Z"
+        }
+      }
+    }
+  },
+  "open_questions": [],
+  "paused_tasks": [],
+  "totals": {
+    "tokens": 47610,
+    "cost_usd_estimate": 0.48,
+    "events": 26
+  }
+}

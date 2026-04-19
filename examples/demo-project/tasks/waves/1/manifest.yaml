@@ -1,0 +1,17 @@
+wave: 1
+created_at: "2026-04-19T00:00:01.000Z"
+title: "Scaffold + name-input feature"
+parallelism_cap: 3
+tasks:
+  - task_id: DEMO_001
+    risk_class: safe
+    allowed_files:
+      - app/page.tsx
+      - lib/name-store.ts
+    contract_path: tasks/waves/1/DEMO_001/contract.md
+  - task_id: DEMO_002
+    risk_class: safe
+    parallel_marker: "[P]"
+    allowed_files:
+      - tests/name-store.test.ts
+    contract_path: tasks/waves/1/DEMO_002/contract.md
