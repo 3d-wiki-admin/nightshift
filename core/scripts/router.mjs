@@ -48,20 +48,16 @@ export function route(contract, { codexAvailable = true } = {}) {
     };
   }
 
-  if (looksMechanical(contract)) {
-    return {
-      model: 'gpt-5.3-codex-spark',
-      effort: 'default',
-      reason: 'scope keywords suggest mechanical/trivial change'
-    };
-  }
-
-  if (
+  // HIGHER-EFFORT conditions MUST be checked before the mechanical/spark
+  // short-circuit — otherwise a task that is both review-required AND has
+  // scope keywords like "rename" would land on spark instead of codex high.
+  const needsHighEffort =
     risk === 'review-required' ||
     diffBudget > 150 ||
     looksRefactor(contract) ||
-    touchesCoreTypes(contract.allowed_files || [])
-  ) {
+    touchesCoreTypes(contract.allowed_files || []);
+
+  if (needsHighEffort) {
     const effort = diffBudget > 300 || looksRefactor(contract) ? 'xhigh' : 'high';
     const reasons = [];
     if (risk === 'review-required') reasons.push('risk=review-required');
@@ -72,6 +68,14 @@ export function route(contract, { codexAvailable = true } = {}) {
       model: 'gpt-5.3-codex',
       effort,
       reason: reasons.join(', ')
+    };
+  }
+
+  if (looksMechanical(contract)) {
+    return {
+      model: 'gpt-5.3-codex-spark',
+      effort: 'default',
+      reason: 'scope keywords suggest mechanical/trivial change (risk=safe)'
     };
   }
 

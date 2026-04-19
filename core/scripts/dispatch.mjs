@@ -15,7 +15,7 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { EventStore } from '../event-store/src/index.mjs';
 
 const COSTS_PATH = new URL('../schemas/costs.json', import.meta.url);
@@ -84,6 +84,17 @@ async function cmdQuote(args) {
   process.stdout.write(JSON.stringify({ model: args.model, tokens, cost_usd_estimate: cost }) + '\n');
 }
 
+// Detect `codex` CLI availability on PATH. Extracted so tests can stub it.
+export function codexAvailable() {
+  const res = spawnSync('bash', ['-lc', 'command -v codex'], { encoding: 'utf8' });
+  return res.status === 0 && res.stdout.trim().length > 0;
+}
+
+// Exit code used when dispatch cannot reach Codex and the caller must fall
+// back (spec §23 degraded mode). Orchestrator treats this as "route to Claude
+// implementer", not as a generic failure.
+export const EXIT_CODEX_UNAVAILABLE = 5;
+
 async function cmdCodex(args) {
   const taskPath = args.taskFile;
   if (!taskPath) throw new Error('codex requires <task.json>');
@@ -104,6 +115,28 @@ async function cmdCodex(args) {
       payload: { kind: 'reviewer_equals_implementer', target_model: model, reviewer_model: task.reviewer_model, reason }
     });
     throw new Error(`[dispatch] refusing to dispatch: ${reason}`);
+  }
+
+  // §23 degraded mode: if Codex CLI isn't on PATH, record the fallback and
+  // exit with EXIT_CODEX_UNAVAILABLE so the orchestrator can route to the
+  // Claude Sonnet implementer instead. We still emit task.routed with the
+  // fallback model so the log is self-describing.
+  if (!codexAvailable()) {
+    await appendEvent(logPath, {
+      session_id: task.session_id,
+      wave: task.wave,
+      task_id: task.task_id,
+      agent: 'orchestrator',
+      action: 'task.routed',
+      payload: {
+        model: 'claude-sonnet-4-6',
+        effort,
+        reason: `codex-unavailable (fallback per §23); original target was ${model}`,
+        fallback_from: model
+      }
+    });
+    console.error('[dispatch] codex CLI not on PATH — fallback: route to Claude implementer (exit 5)');
+    process.exit(EXIT_CODEX_UNAVAILABLE);
   }
 
   await appendEvent(logPath, {

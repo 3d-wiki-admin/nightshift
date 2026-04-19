@@ -77,6 +77,38 @@ test('core types touched → codex high at least', () => {
   assert.equal(r.model, 'gpt-5.3-codex');
 });
 
+test('review-required + mechanical must NOT fall through to spark', () => {
+  const r = route({
+    risk_class: 'review-required',
+    diff_budget_lines: 20,
+    allowed_files: ['app/page.tsx'],
+    scope: { in_scope: ['Rename button label (text-only)'] }
+  });
+  assert.equal(r.model, 'gpt-5.3-codex');
+  assert.ok(r.effort === 'high' || r.effort === 'xhigh', `got effort=${r.effort}`);
+});
+
+test('approval-required + mechanical must NOT fall through to spark', () => {
+  const r = route({
+    risk_class: 'approval-required',
+    diff_budget_lines: 10,
+    allowed_files: ['app/page.tsx'],
+    scope: { in_scope: ['Rename link (text-only)'] }
+  });
+  assert.equal(r.model, 'gpt-5.3-codex');
+  assert.equal(r.effort, 'xhigh');
+});
+
+test('refactor + mechanical keyword combo still routes to codex, not spark', () => {
+  const r = route({
+    risk_class: 'safe',
+    diff_budget_lines: 40,
+    allowed_files: ['lib/big.ts'],
+    scope: { in_scope: ['Refactor big.ts (trivial cleanup)'] }
+  });
+  assert.equal(r.model, 'gpt-5.3-codex');
+});
+
 test('codex unavailable → claude fallback', () => {
   const r = route(
     { risk_class: 'safe', diff_budget_lines: 100, allowed_files: ['x.ts'], scope: { in_scope: ['thing'] } },
