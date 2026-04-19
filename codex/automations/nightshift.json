@@ -1,0 +1,32 @@
+{
+  "$schema": "https://codex.openai.com/schemas/automations.v1.json",
+  "name": "nightshift",
+  "version": "1.0.0",
+  "description": "NightShift adapter for Codex CLI. Used by the NightShift orchestrator (Claude Code) to dispatch implementer tasks via `codex exec --json`.",
+  "skills": [
+    {
+      "name": "implementer",
+      "path": "./skills/implementer/SKILL.md",
+      "default_model": "gpt-5.3-codex",
+      "default_reasoning_effort": "high",
+      "timeout_minutes": 15,
+      "env_required": [
+        "NIGHTSHIFT_TASK_CONTRACT",
+        "NIGHTSHIFT_CONTEXT_PACK",
+        "NIGHTSHIFT_CONSTITUTION"
+      ]
+    },
+    {
+      "name": "context-packer",
+      "path": "./skills/context-packer/SKILL.md",
+      "default_model": "gpt-5.4-mini",
+      "default_reasoning_effort": "default",
+      "timeout_minutes": 5,
+      "env_required": [
+        "NIGHTSHIFT_TASK_CONTRACT",
+        "NIGHTSHIFT_PROJECT_DIR"
+      ]
+    }
+  ],
+  "note": "Automations here are invoked from Claude Code by shelling out to `node <nightshift>/core/scripts/dispatch.mjs codex <task.json>`. The dispatch layer is the ONLY process that appends to events.ndjson; Codex skills must not append directly."
+}
