@@ -24,3 +24,8 @@ coverage/
 .turbo/
 .vscode/
 .idea/
+
+# defensive: dirs literally named `undefined` or `null` at repo root (from
+# tests/agents that passed a bad path to scripts that fell back to cwd).
+/undefined/
+/null/
