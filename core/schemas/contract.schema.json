@@ -1,0 +1,116 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nightshift.dev/schemas/contract.schema.json",
+  "title": "TaskContract",
+  "description": "Frontmatter of tasks/waves/<N>/<TASK-ID>/contract.md (YAML parsed).",
+  "type": "object",
+  "required": [
+    "task_id",
+    "wave",
+    "risk_class",
+    "target_model",
+    "owner_agent",
+    "reviewer_agent",
+    "reviewer_model",
+    "goal",
+    "scope",
+    "allowed_files",
+    "acceptance_criteria",
+    "halt_conditions",
+    "verification_plan"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_-]*$"
+    },
+    "wave": { "type": "integer", "minimum": 0 },
+    "risk_class": {
+      "type": "string",
+      "enum": ["safe", "review-required", "approval-required"]
+    },
+    "parallel_marker": { "type": ["string", "null"] },
+    "target_model": { "type": "string" },
+    "reasoning_effort": {
+      "type": ["string", "null"],
+      "enum": ["default", "high", "xhigh", null]
+    },
+    "diff_budget_lines": { "type": "integer", "minimum": 1 },
+    "owner_agent": { "type": "string" },
+    "reviewer_agent": { "type": "string" },
+    "reviewer_model": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "lease": {
+      "type": "object",
+      "properties": {
+        "worktree": { "type": "string" },
+        "write_lock": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "lease_until": { "type": "string", "format": "date-time" }
+      }
+    },
+    "goal": {
+      "type": "object",
+      "required": ["objective"],
+      "properties": {
+        "objective": { "type": "string" },
+        "business_value": { "type": "string" }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "properties": {
+        "in_scope": { "type": "array", "items": { "type": "string" } },
+        "out_of_scope": { "type": "array", "items": { "type": "string" } },
+        "dependencies": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "source_of_truth": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "allowed_files": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "forbidden_files": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "acceptance_criteria": {
+      "type": "object",
+      "required": ["functional", "gates_required"],
+      "properties": {
+        "functional": { "type": "array", "items": { "type": "string" } },
+        "edge_cases": { "type": "array", "items": { "type": "string" } },
+        "gates_required": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["tests", "types", "lint", "build", "migrations", "smoke", "security"]
+          }
+        }
+      }
+    },
+    "halt_conditions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "verification_plan": {
+      "type": "object",
+      "properties": {
+        "commands": { "type": "array", "items": { "type": "string" } },
+        "manual_checks": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "post_task_updates": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

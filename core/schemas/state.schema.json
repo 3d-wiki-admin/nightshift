@@ -1,0 +1,123 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nightshift.dev/schemas/state.schema.json",
+  "title": "NightshiftState",
+  "description": "Materialized projection of events.ndjson. Never hand-edited.",
+  "type": "object",
+  "required": ["version", "built_from_event_id", "project", "waves", "totals"],
+  "additionalProperties": true,
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "built_from_event_id": { "type": ["string", "null"] },
+    "built_at": { "type": "string", "format": "date-time" },
+    "session_id": { "type": ["string", "null"] },
+    "project": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "constitution_version": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "context_zone": {
+      "type": "string",
+      "enum": ["green", "yellow", "red"]
+    },
+    "waves": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["planned", "in_progress", "reviewing", "accepted", "rolled_back", "halted"]
+          },
+          "checkpoint_tag": { "type": ["string", "null"] },
+          "started_at": { "type": ["string", "null"] },
+          "ended_at": { "type": ["string", "null"] },
+          "tasks": {
+            "type": "object",
+            "additionalProperties": { "$ref": "#/definitions/taskState" }
+          }
+        }
+      }
+    },
+    "open_questions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "paused_tasks": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "totals": {
+      "type": "object",
+      "properties": {
+        "tokens": { "type": "integer", "minimum": 0 },
+        "cost_usd_estimate": { "type": "number", "minimum": 0 },
+        "events": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "definitions": {
+    "taskState": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "contracted",
+            "context_packed",
+            "routed",
+            "dispatched",
+            "blocked",
+            "implemented",
+            "reviewing",
+            "accepted",
+            "rejected",
+            "revised",
+            "promoted"
+          ]
+        },
+        "risk_class": {
+          "type": "string",
+          "enum": ["safe", "review-required", "approval-required"]
+        },
+        "parallel_marker": { "type": ["string", "null"] },
+        "model": { "type": ["string", "null"] },
+        "effort": { "type": ["string", "null"] },
+        "retries": { "type": "integer", "minimum": 0 },
+        "lease": {
+          "type": ["object", "null"],
+          "properties": {
+            "worktree": { "type": "string" },
+            "until": { "type": ["string", "null"] },
+            "locks": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "gates": {
+          "type": "object",
+          "properties": {
+            "tests": { "type": ["string", "null"] },
+            "types": { "type": ["string", "null"] },
+            "lint": { "type": ["string", "null"] },
+            "build": { "type": ["string", "null"] },
+            "smoke": { "type": ["string", "null"] },
+            "migrations": { "type": ["string", "null"] },
+            "security": { "type": ["string", "null"] }
+          }
+        },
+        "quality_score": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "tokens": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "evidence_folder": { "type": ["string", "null"] },
+        "last_event_ts": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

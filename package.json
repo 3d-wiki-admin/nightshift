@@ -1,0 +1,28 @@
+{
+  "name": "nightshift",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Multi-agent development plugin on top of Claude Code + Codex CLI — describe a project in chat, sleep, wake up to a reviewed, deployed implementation with full audit trail.",
+  "license": "MIT",
+  "author": "ksokolovsky",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/3d-wiki-admin/nightshift.git"
+  },
+  "scripts": {
+    "test": "node --test core/event-store/test/*.test.mjs core/scripts/test/*.test.mjs",
+    "test:event-store": "node --test core/event-store/test/*.test.mjs",
+    "test:scripts": "node --test core/scripts/test/*.test.mjs",
+    "replay": "node core/scripts/replay-events.mjs",
+    "truth-score": "node core/scripts/truth-score.mjs",
+    "install-plugin": "./scripts/install.sh"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Unit cost table (USD per 1M tokens). Used for cost_usd_estimate. Not live-fetched (see spec §25 Q4).",
+  "updated_at": "2026-04-19",
+  "models": {
+    "claude-opus-4-7": {
+      "input_per_mtok": 15.00,
+      "output_per_mtok": 75.00,
+      "cache_read_per_mtok": 1.50,
+      "cache_write_per_mtok": 18.75
+    },
+    "claude-sonnet-4-6": {
+      "input_per_mtok": 3.00,
+      "output_per_mtok": 15.00,
+      "cache_read_per_mtok": 0.30,
+      "cache_write_per_mtok": 3.75
+    },
+    "claude-haiku-4-5": {
+      "input_per_mtok": 1.00,
+      "output_per_mtok": 5.00,
+      "cache_read_per_mtok": 0.10,
+      "cache_write_per_mtok": 1.25
+    },
+    "gpt-5.4": {
+      "input_per_mtok": 10.00,
+      "output_per_mtok": 30.00,
+      "cache_read_per_mtok": 1.00
+    },
+    "gpt-5.4-mini": {
+      "input_per_mtok": 0.25,
+      "output_per_mtok": 2.00,
+      "cache_read_per_mtok": 0.025
+    },
+    "gpt-5.3-codex": {
+      "input_per_mtok": 8.00,
+      "output_per_mtok": 24.00,
+      "cache_read_per_mtok": 0.80
+    },
+    "gpt-5.3-codex-spark": {
+      "input_per_mtok": 1.00,
+      "output_per_mtok": 3.00,
+      "cache_read_per_mtok": 0.10
+    }
+  },
+  "defaults": {
+    "input_per_mtok": 5.00,
+    "output_per_mtok": 20.00,
+    "cache_read_per_mtok": 0.50
+  }
+}

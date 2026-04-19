@@ -1,0 +1,133 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nightshift.dev/schemas/event.schema.json",
+  "title": "NightshiftEvent",
+  "description": "One line of events.ndjson. Append-only canonical log.",
+  "type": "object",
+  "required": ["ts", "event_id", "session_id", "agent", "action"],
+  "additionalProperties": true,
+  "properties": {
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC timestamp with millisecond precision."
+    },
+    "event_id": {
+      "type": "string",
+      "pattern": "^ev_[0-9A-HJKMNP-TV-Z]{20,40}$",
+      "description": "ULID-style id prefixed with ev_."
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^sess_[0-9A-HJKMNP-TV-Z]{20,40}$"
+    },
+    "wave": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "task_id": {
+      "type": ["string", "null"],
+      "pattern": "^[A-Z][A-Z0-9_-]*$"
+    },
+    "agent": {
+      "type": "string",
+      "enum": [
+        "orchestrator",
+        "spec-writer",
+        "plan-writer",
+        "analyzer",
+        "task-decomposer",
+        "context-packer",
+        "implementer",
+        "task-spec-reviewer",
+        "task-impl-reviewer",
+        "wave-reviewer",
+        "blocker-resolver",
+        "infra-provisioner",
+        "doc-syncer",
+        "health-pinger",
+        "morning-digest",
+        "system"
+      ]
+    },
+    "model": {
+      "type": ["string", "null"],
+      "description": "Concrete model id (e.g. claude-opus-4-7, gpt-5.3-codex)."
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "session.start",
+        "session.end",
+        "session.halted",
+        "wave.planned",
+        "wave.started",
+        "wave.reviewed",
+        "wave.accepted",
+        "task.contracted",
+        "task.context_packed",
+        "task.routed",
+        "task.dispatched",
+        "task.blocked",
+        "task.resolved",
+        "task.implemented",
+        "task.reviewed",
+        "task.accepted",
+        "task.rejected",
+        "task.revised",
+        "task.promoted_to_heavy",
+        "gate.passed",
+        "gate.failed",
+        "guard.violation",
+        "question.asked",
+        "question.answered",
+        "decision.recorded",
+        "infra.provisioned",
+        "infra.rotated",
+        "infra.deleted_requested",
+        "checkpoint.tagged",
+        "rollback.performed",
+        "pinger.ping",
+        "pinger.unstuck",
+        "pinger.unstuck.failed",
+        "budget.exceeded",
+        "context_zone.changed",
+        "lease.acquired",
+        "lease.extended",
+        "lease.expired",
+        "lease.released"
+      ]
+    },
+    "outcome": {
+      "type": ["string", "null"],
+      "enum": ["success", "failure", "halted", "revised", null]
+    },
+    "tokens": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "input": { "type": "integer", "minimum": 0 },
+        "output": { "type": "integer", "minimum": 0 },
+        "cached": { "type": "integer", "minimum": 0 },
+        "reasoning": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "cost_usd_estimate": {
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "duration_ms": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "evidence_paths": {
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "notes": { "type": "string" },
+    "payload": {
+      "type": ["object", "null"],
+      "description": "Action-specific payload. Free-form but conventionally typed per action."
+    }
+  }
+}

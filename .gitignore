@@ -1,0 +1,26 @@
+node_modules/
+.DS_Store
+dist/
+build/
+coverage/
+*.log
+.env
+.env.local
+.env.*.local
+
+# runtime state (dogfood)
+.nightshift/
+tasks/events.ndjson
+tasks/state.json
+tasks/waves/
+tasks/history/
+tasks/paused.md
+tasks/decisions.md
+tasks/questions.md
+
+# tooling
+.vercel/
+.next/
+.turbo/
+.vscode/
+.idea/
