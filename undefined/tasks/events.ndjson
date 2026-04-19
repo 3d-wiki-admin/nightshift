@@ -1,0 +1,2 @@
+{"event_id":"ev_01KPM25ZM9KJEP1YF3QYAV9CBK","ts":"2026-04-19T23:45:58.921Z","session_id":"sess_01HXYZ000000000000000001","agent":"orchestrator","action":"session.start","payload":{"project":"tmp"}}
+{"event_id":"ev_01KPM25ZMFPX9ZF27RD5QFCGEA","ts":"2026-04-19T23:45:58.927Z","session_id":"sess_01HXYZ000000000000000001","wave":7,"task_id":"TASK_A","agent":"task-decomposer","action":"task.contracted"}

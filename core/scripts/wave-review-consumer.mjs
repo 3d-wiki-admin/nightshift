@@ -94,8 +94,11 @@ export async function consume(projectDir, wave) {
   const verdict = detectVerdict(text);
   const reviewerModel = detectReviewerModel(text);
 
-  if (!verdict) {
-    return { status: 'no_verdict', reviewPath, reviewerModel };
+  // Contract: anything other than accept|revise collapses to no_verdict so
+  // callers have ONE branch to handle "we can't act on this automatically".
+  const RECOGNIZED = new Set(['accept', 'revise']);
+  if (!verdict || !RECOGNIZED.has(verdict)) {
+    return { status: 'no_verdict', reviewPath, reviewerModel, verdict: verdict || null };
   }
 
   const store = new EventStore(logPath);
@@ -170,7 +173,8 @@ export async function consume(projectDir, wave) {
     return { status: 'revised', verdict: 'revise', wave: waveN, revisions, reviewerModel, reviewPath };
   }
 
-  return { status: 'unknown_verdict', verdict, reviewPath };
+  // Unreachable under current RECOGNIZED set; retained as defensive default.
+  return { status: 'no_verdict', verdict, reviewPath };
 }
 
 async function main() {

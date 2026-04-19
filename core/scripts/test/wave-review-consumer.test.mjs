@@ -156,12 +156,29 @@ test('verdict=revise with no attributable tasks emits wave.reviewed (no per-task
   await fs.rm(project, { recursive: true, force: true });
 });
 
-test('unrecognized verdict returns no_verdict', async () => {
+test('missing verdict line returns no_verdict and emits no events', async () => {
   const project = tmpProject();
   const logPath = await setupWave(project, 1, ['TASK_A']);
   const reviewPath = path.join(project, 'tasks', 'waves', '1', 'wave-review.md');
   await fs.writeFile(reviewPath, '# Wave 1\nReviewer: gpt-5.4\nthis has no verdict line at all\n', 'utf8');
   const r = await consume(project, 1);
   assert.equal(r.status, 'no_verdict');
+  const events = await new EventStore(logPath).all();
+  const novel = events.filter(e => ['wave.accepted', 'task.revised', 'wave.reviewed'].includes(e.action));
+  assert.equal(novel.length, 0, 'no_verdict must not emit downstream events');
+  await fs.rm(project, { recursive: true, force: true });
+});
+
+test('explicit unrecognized verdict (e.g., "defer") also returns no_verdict and emits no events', async () => {
+  const project = tmpProject();
+  const logPath = await setupWave(project, 1, ['TASK_A']);
+  const reviewPath = path.join(project, 'tasks', 'waves', '1', 'wave-review.md');
+  await fs.writeFile(reviewPath, '# Wave 1\nReviewer: gpt-5.4\n## Verdict: defer\nWait for Q-14 answer.\n', 'utf8');
+  const r = await consume(project, 1);
+  assert.equal(r.status, 'no_verdict');
+  assert.equal(r.verdict, 'defer');
+  const events = await new EventStore(logPath).all();
+  const novel = events.filter(e => ['wave.accepted', 'task.revised', 'wave.reviewed'].includes(e.action));
+  assert.equal(novel.length, 0, 'unrecognized verdict must not emit downstream events');
   await fs.rm(project, { recursive: true, force: true });
 });
