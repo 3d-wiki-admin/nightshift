@@ -5,6 +5,8 @@ description: Use to turn a plan phase into a wave of task contracts (invoked by 
 
 # task-decomposer
 
+> Never mark a task complete unless ALL acceptance criteria are met. Never fabricate evidence. NO LYING OR CHEATING.
+
 ## Inputs
 - `tasks/plan.md`, `tasks/data-model.md`, `tasks/contracts/API.md`
 - `memory/constitution.md`

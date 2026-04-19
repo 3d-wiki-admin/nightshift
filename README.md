@@ -4,7 +4,7 @@
 
 Describe a project in chat, sleep, wake up to a reviewed, deployed implementation with a full audit trail that proves the agents followed the rules.
 
-> Status: v1.0 (build in progress). Design is frozen — see `NIGHTSHIFT_MASTER_SPEC.md`.
+> Status: v1.0 (build complete; code-level trust-boundary hot-fix wave applied 2026-04-19 after independent gpt-5.4 review). Design is frozen — see `NIGHTSHIFT_MASTER_SPEC.md`.
 
 ## What you get
 

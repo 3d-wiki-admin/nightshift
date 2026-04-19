@@ -24,6 +24,31 @@ async function loadCosts() {
   return JSON.parse(await fs.readFile(COSTS_PATH, 'utf8'));
 }
 
+// Single public write entry for events.ndjson. All non-test callers must use this
+// instead of EventStore.append directly, so cost estimation and future invariants
+// (reviewer-gate, model policy, etc.) apply uniformly. The low-level EventStore.append
+// is considered the internal validator; reserve direct use for the event-store's own
+// tests.
+export async function appendEvent(logPath, event) {
+  if (!logPath) throw new Error('appendEvent: logPath required');
+  const filled = { ...event };
+  if (filled.model && filled.tokens && filled.cost_usd_estimate == null) {
+    filled.cost_usd_estimate = await estimateCost(filled.model, filled.tokens);
+  }
+  const store = new EventStore(logPath);
+  return await store.append(filled);
+}
+
+// Reviewer model MUST differ from implementer target_model at dispatch time (spec §6.2).
+// Returns a tuple [ok, reason]. Callers MUST emit guard.violation on failure.
+export function assertReviewerNotImplementer(targetModel, reviewerModel) {
+  if (!targetModel || !reviewerModel) return [true, null];
+  if (targetModel === reviewerModel) {
+    return [false, `reviewer model (${reviewerModel}) must differ from implementer target (${targetModel})`];
+  }
+  return [true, null];
+}
+
 export async function estimateCost(model, tokens) {
   const costs = await loadCosts();
   const m = costs.models[model] || costs.defaults;
@@ -48,11 +73,7 @@ async function cmdAppend(args) {
   const logPath = args.log || path.join(process.cwd(), 'tasks/events.ndjson');
   const text = await readStdin();
   const event = JSON.parse(text);
-  if (event.model && event.tokens && event.cost_usd_estimate == null) {
-    event.cost_usd_estimate = await estimateCost(event.model, event.tokens);
-  }
-  const store = new EventStore(logPath);
-  const written = await store.append(event);
+  const written = await appendEvent(logPath, event);
   process.stdout.write(JSON.stringify(written) + '\n');
 }
 
@@ -68,12 +89,24 @@ async function cmdCodex(args) {
   if (!taskPath) throw new Error('codex requires <task.json>');
   const task = JSON.parse(await fs.readFile(taskPath, 'utf8'));
   const logPath = args.log || path.join(process.cwd(), 'tasks/events.ndjson');
-  const store = new EventStore(logPath);
 
   const model = task.target_model;
   const effort = task.reasoning_effort || 'default';
 
-  await store.append({
+  const [ok, reason] = assertReviewerNotImplementer(model, task.reviewer_model);
+  if (!ok) {
+    await appendEvent(logPath, {
+      session_id: task.session_id,
+      wave: task.wave,
+      task_id: task.task_id,
+      agent: 'system',
+      action: 'guard.violation',
+      payload: { kind: 'reviewer_equals_implementer', target_model: model, reviewer_model: task.reviewer_model, reason }
+    });
+    throw new Error(`[dispatch] refusing to dispatch: ${reason}`);
+  }
+
+  await appendEvent(logPath, {
     session_id: task.session_id,
     wave: task.wave,
     task_id: task.task_id,
@@ -83,7 +116,7 @@ async function cmdCodex(args) {
   });
 
   const started = Date.now();
-  await store.append({
+  await appendEvent(logPath, {
     session_id: task.session_id,
     wave: task.wave,
     task_id: task.task_id,
@@ -113,7 +146,7 @@ async function cmdCodex(args) {
   const cost = await estimateCost(model, tokens);
 
   if (exitCode === 0) {
-    await store.append({
+    await appendEvent(logPath, {
       session_id: task.session_id,
       wave: task.wave,
       task_id: task.task_id,
@@ -127,7 +160,7 @@ async function cmdCodex(args) {
       evidence_paths: [`tasks/waves/${task.wave}/${task.task_id}/result.md`]
     });
   } else {
-    await store.append({
+    await appendEvent(logPath, {
       session_id: task.session_id,
       wave: task.wave,
       task_id: task.task_id,

@@ -5,6 +5,8 @@ description: Extract the minimal slice of spec/plan/data-model/contracts relevan
 
 # context-packer (Codex adapter)
 
+> Never mark a task complete unless ALL acceptance criteria are met. Never fabricate evidence. NO LYING OR CHEATING.
+
 Implementation: see `core/skills/context-packer/SKILL.md` for the full protocol. This file is a Codex-specific adapter; the behavior is identical.
 
 ## Inputs (via env)

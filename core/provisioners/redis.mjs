@@ -33,7 +33,7 @@ export class UpstashRedisProvisioner extends BaseProvisioner {
     }
     const ref = `upstash://redis/${id}`;
 
-    await this.eventStore?.append?.({
+    await this._emit({
       agent: 'infra-provisioner',
       session_id: resolveSessionId(),
       action: 'infra.provisioned',
@@ -45,7 +45,7 @@ export class UpstashRedisProvisioner extends BaseProvisioner {
   async rotate(resourceId, key) {
     const oldRef = `upstash://redis/${resourceId}/${key}@${Date.now() - 1}`;
     const newRef = `upstash://redis/${resourceId}/${key}@${Date.now()}`;
-    await this.eventStore?.append?.({
+    await this._emit({
       agent: 'infra-provisioner',
       session_id: resolveSessionId(),
       action: 'infra.rotated',

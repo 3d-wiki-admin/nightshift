@@ -11,6 +11,7 @@ import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { EventStore, buildState, sessionId } from '../event-store/src/index.mjs';
+import { appendEvent } from './dispatch.mjs';
 
 const STALE_MIN = 15;
 const FAIL_THRESHOLD = 3;
@@ -28,7 +29,7 @@ async function main() {
 
   const now = Date.now();
   const sid = state.session_id || sessionId();
-  await store.append({
+  await appendEvent(logPath, {
     session_id: sid,
     agent: 'health-pinger',
     action: 'pinger.ping',
@@ -66,11 +67,11 @@ async function main() {
     const key = `${st.wave}:${st.task_id}`;
     const fails = failCounts[key] || 0;
     if (fails >= FAIL_THRESHOLD) {
-      await pauseTask(projectDir, st, store, sid);
+      await pauseTask(projectDir, st, logPath, sid);
       continue;
     }
     const ok = await attemptUnstick(projectDir);
-    await store.append({
+    await appendEvent(logPath, {
       session_id: sid,
       wave: st.wave,
       task_id: st.task_id,
@@ -83,7 +84,7 @@ async function main() {
     } else {
       failCounts[key] = fails + 1;
       if (failCounts[key] >= FAIL_THRESHOLD) {
-        await pauseTask(projectDir, st, store, sid);
+        await pauseTask(projectDir, st, logPath, sid);
       }
     }
   }
@@ -113,7 +114,7 @@ async function attemptUnstick(projectDir) {
   });
 }
 
-async function pauseTask(projectDir, st, store, sessionId) {
+async function pauseTask(projectDir, st, logPath, sessionId) {
   const pausedPath = path.join(projectDir, 'tasks', 'paused.md');
   let body = '';
   try { body = await fs.readFile(pausedPath, 'utf8'); } catch {}
@@ -121,7 +122,7 @@ async function pauseTask(projectDir, st, store, sessionId) {
                 `Status: ${st.status}\nReason: 3 consecutive unstick attempts failed.\n`;
   await fs.writeFile(pausedPath, body + entry, 'utf8');
 
-  await store.append({
+  await appendEvent(logPath, {
     session_id: sessionId,
     wave: st.wave,
     task_id: st.task_id,

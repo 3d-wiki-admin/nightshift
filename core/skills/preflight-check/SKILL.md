@@ -5,6 +5,8 @@ description: Use before long unattended runs (/preflight). Validates constitutio
 
 # preflight-check
 
+> Never mark a task complete unless ALL acceptance criteria are met. Never fabricate evidence. NO LYING OR CHEATING.
+
 ## Protocol
 
 Shell out:

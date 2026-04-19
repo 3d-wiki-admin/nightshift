@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# run-with-secrets.sh — resolve {{SECRET:KEY}} placeholders from the active secret backend
-# and exec the provided command with resolved env vars.
+# run-with-secrets.sh — resolve {{SECRET:KEY}} placeholders from the active
+# secret backend and exec the provided command with resolved env vars.
+#
+# IMPORTANT: values are passed as literal `KEY=value` argv tokens to `env`,
+# never sourced as shell. A secret value like $(rm -rf /) is therefore inert.
 #
 # Usage:
 #   run-with-secrets.sh <command> [args...]
-#
-# Reads .env.template in cwd, substitutes placeholders via the backend, then execs.
 set -euo pipefail
 
 project="${NIGHTSHIFT_PROJECT:-$(basename "$PWD")}"
@@ -22,9 +23,11 @@ resolve() {
     local)
       local file="${HOME}/.nightshift/secrets/${project}/.env"
       [ -f "$file" ] || return 1
-      grep "^${key}=" "$file" | head -1 | cut -d= -f2- || return 1
+      local line
+      line="$(grep "^${key}=" "$file" | head -1)" || return 1
+      printf '%s' "${line#*=}"
       ;;
-    1password)
+    1password|op)
       op read "op://nightshift/${project}/${key}" 2>/dev/null || return 1
       ;;
     *)
@@ -34,17 +37,15 @@ resolve() {
   esac
 }
 
-tmp_env="$(mktemp)"
-trap 'rm -f "$tmp_env"' EXIT
-
-while IFS= read -r line; do
-  if [[ "$line" =~ ^[[:space:]]*#.*$ || -z "$line" ]]; then
-    echo "$line" >>"$tmp_env"
+env_args=()
+while IFS= read -r line || [ -n "$line" ]; do
+  # skip blank and comment lines
+  if [[ -z "${line//[[:space:]]/}" || "${line#"${line%%[![:space:]]*}"}" == \#* ]]; then
     continue
   fi
   key="${line%%=*}"
   val="${line#*=}"
-  if [[ "$val" == \{\{*\}\} ]]; then
+  if [[ "$val" == "{{"*"}}" ]]; then
     inner="${val:2:${#val}-4}"
     secret_key="${inner#SECRET:}"
     secret_key="${secret_key#LOCAL:}"
@@ -53,15 +54,17 @@ while IFS= read -r line; do
       echo "run-with-secrets: unresolved secret '$secret_key' for project '$project'" >&2
       exit 3
     fi
-    echo "${key}=${resolved}" >>"$tmp_env"
+    env_args+=("${key}=${resolved}")
   else
-    echo "${line}" >>"$tmp_env"
+    env_args+=("${key}=${val}")
   fi
 done < "$template"
 
-set -a
-# shellcheck disable=SC1090
-. "$tmp_env"
-set +a
-
-exec "$@"
+# `env KEY=value [KEY2=value2 ...] -- cmd [args...]` sets the vars as literal
+# strings and execs cmd. Shell substitution in values does NOT happen here —
+# env treats each arg as an opaque KEY=VALUE assignment.
+if [ "${#env_args[@]}" -gt 0 ]; then
+  exec env "${env_args[@]}" "$@"
+else
+  exec "$@"
+fi

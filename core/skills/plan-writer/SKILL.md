@@ -5,6 +5,8 @@ description: Use after spec-writer accepted the spec (invoked by /plan). Produce
 
 # plan-writer
 
+> Never mark a task complete unless ALL acceptance criteria are met. Never fabricate evidence. NO LYING OR CHEATING.
+
 ## Inputs
 - `memory/constitution.md` — hard rules (MUST read first).
 - `tasks/spec.md` — what we're building.

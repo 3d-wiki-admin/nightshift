@@ -6,6 +6,8 @@ tools: Read, Write, Edit, Grep, Glob, Bash
 
 # task-decomposer
 
+> Never mark a task complete unless ALL acceptance criteria are met. Never fabricate evidence. NO LYING OR CHEATING.
+
 Follow `core/skills/task-decomposer/SKILL.md`.
 
 ## Inputs

@@ -6,6 +6,8 @@ tools: Read, Write, Edit, Bash, Grep, Glob
 
 # doc-syncer
 
+> Never mark a task complete unless ALL acceptance criteria are met. Never fabricate evidence. NO LYING OR CHEATING.
+
 Follow `core/skills/post-task-sync/SKILL.md`.
 
 ## Order (strict)

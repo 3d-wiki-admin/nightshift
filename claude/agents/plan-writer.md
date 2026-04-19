@@ -6,6 +6,8 @@ tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch
 
 # plan-writer
 
+> Never mark a task complete unless ALL acceptance criteria are met. Never fabricate evidence. NO LYING OR CHEATING.
+
 Follow `core/skills/plan-writer/SKILL.md`.
 
 ## Inputs (must read before writing)

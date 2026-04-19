@@ -35,7 +35,7 @@ export class VercelProvisioner extends BaseProvisioner {
     }
 
     const ref = `vercel://projects/${project}`;
-    await this.eventStore?.append?.({
+    await this._emit({
       agent: 'infra-provisioner',
       model: null,
       session_id: resolveSessionId(),
@@ -55,7 +55,7 @@ export class VercelProvisioner extends BaseProvisioner {
       spawnSync('vercel', ['env', 'add', key, 'production', '--scope', resourceId], { stdio: 'inherit' });
     }
 
-    await this.eventStore?.append?.({
+    await this._emit({
       agent: 'infra-provisioner',
       session_id: resolveSessionId(),
       action: 'infra.rotated',

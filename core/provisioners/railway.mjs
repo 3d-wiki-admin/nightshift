@@ -38,7 +38,7 @@ export class RailwayProvisioner extends BaseProvisioner {
     }
     const ref = `railway://projects/${id}`;
 
-    await this.eventStore?.append?.({
+    await this._emit({
       agent: 'infra-provisioner',
       session_id: resolveSessionId(),
       action: 'infra.provisioned',
@@ -50,7 +50,7 @@ export class RailwayProvisioner extends BaseProvisioner {
   async rotate(resourceId, key) {
     const oldRef = `railway://env/${resourceId}/${key}@${Date.now() - 1}`;
     const newRef = `railway://env/${resourceId}/${key}@${Date.now()}`;
-    await this.eventStore?.append?.({
+    await this._emit({
       agent: 'infra-provisioner',
       session_id: resolveSessionId(),
       action: 'infra.rotated',

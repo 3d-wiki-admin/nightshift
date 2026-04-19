@@ -5,6 +5,8 @@ description: Use when starting a new target project. Creates memory/, tasks/, sc
 
 # project-bootstrap
 
+> Never mark a task complete unless ALL acceptance criteria are met. Never fabricate evidence. NO LYING OR CHEATING.
+
 ## Inputs
 - Target directory (defaults to CWD).
 - Stack preset: `nextjs-supabase-vercel` (default per spec §25 Q1) or `blank`.

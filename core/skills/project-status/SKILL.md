@@ -5,6 +5,8 @@ description: Use when the user asks `/status`. Produces an ASCII dashboard of wa
 
 # project-status
 
+> Never mark a task complete unless ALL acceptance criteria are met. Never fabricate evidence. NO LYING OR CHEATING.
+
 ## Protocol
 
 Shell out:

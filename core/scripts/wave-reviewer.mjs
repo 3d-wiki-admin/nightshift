@@ -10,7 +10,8 @@
 import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
-import { EventStore } from '../event-store/src/index.mjs';
+import { EventStore, sessionId as genSessionId } from '../event-store/src/index.mjs';
+import { appendEvent } from './dispatch.mjs';
 
 const WAVE_REVIEW_TIMEOUT_MS = 60 * 60 * 1000;
 const REVIEW_MODEL = 'gpt-5.4';
@@ -107,9 +108,11 @@ async function launch(project, wave) {
   child.stderr.pipe(stream);
   child.unref();
 
-  const store = new EventStore(path.join(project, 'tasks', 'events.ndjson'));
-  await store.append({
-    session_id: process.env.NIGHTSHIFT_SESSION_ID || 'sess_wave_reviewer',
+  const logPath = path.join(project, 'tasks', 'events.ndjson');
+  const envSid = process.env.NIGHTSHIFT_SESSION_ID;
+  const sid = envSid && /^sess_[0-9A-HJKMNP-TV-Z]{20,40}$/.test(envSid) ? envSid : genSessionId();
+  await appendEvent(logPath, {
+    session_id: sid,
     wave: Number(wave),
     agent: 'wave-reviewer',
     model: REVIEW_MODEL,

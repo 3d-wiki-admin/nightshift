@@ -37,7 +37,22 @@ ns_project_dir() {
   ns_event_field cwd
 }
 
-# Append one event via the dispatch layer.
+# Return a valid nightshift-format session_id: the one from the hook event if
+# it matches the schema, otherwise a freshly generated ULID.
+ns_session_id() {
+  local raw
+  raw="$(ns_event_field session_id 2>/dev/null || true)"
+  if [ -n "$raw" ] && echo "$raw" | grep -qE '^sess_[0-9A-HJKMNP-TV-Z]{20,40}$'; then
+    printf '%s' "$raw"
+  else
+    node --input-type=module -e "import(process.argv[1]).then(m=>process.stdout.write(m.sessionId()))" \
+      "$NIGHTSHIFT_HOME/core/event-store/src/id.mjs" 2>/dev/null
+  fi
+}
+
+# Append one event via the dispatch layer. The payload JSON may omit
+# session_id; we inject a valid one before sending so audit lines survive
+# even when the caller-supplied session_id was invalid.
 # Usage: ns_append_event '{"agent":"system","action":"guard.violation",...}'
 ns_append_event() {
   local payload="$1"
@@ -46,7 +61,16 @@ ns_append_event() {
   if [ ! -d "$(dirname "$log")" ]; then
     return 0
   fi
-  echo "$payload" | node "$NIGHTSHIFT_HOME/core/scripts/dispatch.mjs" append --log "$log" >/dev/null 2>&1 || true
+  local sid
+  sid="$(ns_session_id)"
+  # Inject/overwrite session_id field in the payload JSON via node, then send.
+  PAYLOAD="$payload" SID="$sid" node -e '
+    const p = JSON.parse(process.env.PAYLOAD || "{}");
+    p.session_id = process.env.SID;
+    process.stdout.write(JSON.stringify(p));
+  ' 2>/dev/null \
+    | node "$NIGHTSHIFT_HOME/core/scripts/dispatch.mjs" append --log "$log" >/dev/null 2>&1 \
+    || true
 }
 
 # Decide "block" with a reason (Claude Code hook response).
@@ -64,7 +88,10 @@ ns_allow() {
   exit 0
 }
 
-# Most recently dispatched task without a subsequent terminal event.
+# Most recently active task — one whose latest task.* event is NOT terminal.
+# Terminal: accepted | rejected | revised | promoted_to_heavy.
+# Active spans every other task.* lifecycle action (contracted, context_packed,
+# routed, dispatched, blocked, resolved, implemented, reviewed).
 # Echoes: "WAVE\tTASK_ID" (tab-separated) or empty if none.
 ns_active_task() {
   local log
@@ -74,24 +101,56 @@ ns_active_task() {
     const fs = require("fs");
     const log = process.argv[1];
     const lines = fs.readFileSync(log, "utf8").split("\n").filter(Boolean);
-    const tasks = {};
+    const terminal = new Set([
+      "task.accepted",
+      "task.rejected",
+      "task.revised",
+      "task.promoted_to_heavy"
+    ]);
+    let best = null;
     for (const l of lines) {
       try {
         const e = JSON.parse(l);
         if (!e.task_id) continue;
-        if (!tasks[e.task_id]) tasks[e.task_id] = { wave: e.wave, last: null };
-        tasks[e.task_id].last = e.action;
+        if (!e.action || !e.action.startsWith("task.")) continue;
+        if (terminal.has(e.action)) {
+          if (best && best.id === e.task_id) best = null;
+          continue;
+        }
+        best = { id: e.task_id, wave: e.wave };
       } catch {}
-    }
-    const terminal = new Set(["task.accepted","task.rejected","task.implemented","task.blocked","task.promoted_to_heavy"]);
-    let best = null;
-    for (const [id, t] of Object.entries(tasks)) {
-      if (t.last === "task.dispatched" || t.last === "task.context_packed") {
-        best = { id, wave: t.wave };
-      }
     }
     if (best) process.stdout.write(`${best.wave}\t${best.id}`);
   ' "$log"
+}
+
+# Extract write targets from a Bash command string. Covers common patterns:
+#   > path, >> path, tee path, sed -i path, mv src dst, cp src dst,
+#   touch path, ln path, install -m mode src dst.
+# Best-effort; returns one path per line.
+ns_bash_write_targets() {
+  local cmd="$1"
+  [ -z "$cmd" ] && return 0
+  CMD="$cmd" node -e '
+    const s = process.env.CMD || "";
+    const out = new Set();
+    const patterns = [
+      /(?<![|&>])\s*(?:>>?|[12]>>?)\s*([^\s|&;<>]+)/g,
+      /\btee(?:\s+-\S+)*\s+([^\s|&;<>]+)/g,
+      /\bsed\s+-i(?:\s*\S*)?(?:\s+-e\s+\S+)*\s+([^\s|&;<>]+)$/gm,
+      /\b(?:mv|cp)(?:\s+-\S+)*\s+\S+\s+([^\s|&;<>]+)/g,
+      /\btouch(?:\s+-\S+)*\s+([^\s|&;<>]+)/g,
+      /\binstall(?:\s+-\S+)*(?:\s+\S+)*\s+([^\s|&;<>]+)$/gm,
+      /\bln(?:\s+-\S+)*\s+\S+\s+([^\s|&;<>]+)/g
+    ];
+    for (const re of patterns) {
+      let m;
+      while ((m = re.exec(s)) !== null) {
+        out.add(m[1].replace(/^["\x27]|["\x27]$/g, ""));
+      }
+    }
+    for (const p of out) process.stdout.write(p + "\n");
+  '
 }
 
 # Extract `allowed_files` list from a task contract (simple YAML parse via node).

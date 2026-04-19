@@ -13,7 +13,8 @@ Micro lane rules (spec §5):
 
 Flow:
 
-1. **Draft a mini-contract** at `tasks/waves/micro/TASK-<timestamp>/contract.md`:
+1. **Draft a mini-contract** at `tasks/micro/TASK-<timestamp>/contract.md` (NOT under `waves/` — micro tasks have no wave):
+   - `wave: null`   (contract.schema allows null for micro lane)
    - `goal.objective` = the $ARGUMENTS string cleaned up.
    - `risk_class: safe`.
    - `diff_budget_lines: 200`.

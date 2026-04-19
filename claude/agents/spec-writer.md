@@ -6,6 +6,8 @@ tools: Read, Write, Edit, Grep, Glob, Bash
 
 # spec-writer
 
+> Never mark a task complete unless ALL acceptance criteria are met. Never fabricate evidence. NO LYING OR CHEATING.
+
 Follow `core/skills/spec-writer/SKILL.md` verbatim.
 
 ## Interview order (stop when user says "go")

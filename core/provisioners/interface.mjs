@@ -10,6 +10,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { sessionId as genSessionId } from '../event-store/src/id.mjs';
+import { appendEvent } from '../scripts/dispatch.mjs';
 
 export function resolveSessionId() {
   const env = process.env.NIGHTSHIFT_SESSION_ID;
@@ -30,11 +31,20 @@ export function cliExists(cmd) {
 }
 
 export class BaseProvisioner {
-  constructor({ service, execute = false, secrets, eventStore } = {}) {
+  // Pass logPath (path to tasks/events.ndjson); provisioners write via
+  // dispatch.appendEvent so the single-writer invariant holds. A legacy
+  // `eventStore` argument (EventStore instance) is accepted and converted to
+  // its logPath so older test harnesses keep working.
+  constructor({ service, execute = false, secrets, logPath, eventStore } = {}) {
     this.service = service;
     this.execute = execute;
     this.secrets = secrets;
-    this.eventStore = eventStore;
+    this.logPath = logPath || eventStore?.logPath || null;
+  }
+
+  async _emit(event) {
+    if (!this.logPath) return null;
+    return await appendEvent(this.logPath, event);
   }
 
   async preflight() { throw new ProvisionerError('not implemented', { code: 'ABSTRACT' }); }
@@ -42,7 +52,7 @@ export class BaseProvisioner {
   async create()    { throw new ProvisionerError('not implemented', { code: 'ABSTRACT' }); }
   async rotate()    { throw new ProvisionerError('not implemented', { code: 'ABSTRACT' }); }
   async deleteRequested(resourceId) {
-    await this.eventStore?.append?.({
+    await this._emit({
       agent: 'infra-provisioner',
       action: 'infra.deleted_requested',
       session_id: resolveSessionId(),

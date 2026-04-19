@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { EventStore, buildState, sessionId } from '../event-store/src/index.mjs';
+import { appendEvent } from './dispatch.mjs';
 
 function yyyymmdd(d = new Date()) {
   return d.toISOString().slice(0, 10);
@@ -86,7 +87,7 @@ async function main() {
   }
 
   const sid = state.session_id || sessionId();
-  await store.append({
+  await appendEvent(logPath, {
     session_id: sid,
     agent: 'morning-digest',
     action: 'pinger.ping',

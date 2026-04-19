@@ -25,7 +25,13 @@
       "type": "string",
       "pattern": "^[A-Z][A-Z0-9_-]*$"
     },
-    "wave": { "type": "integer", "minimum": 0 },
+    "wave": {
+      "oneOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "null" }
+      ],
+      "description": "Integer wave number for heavy lane; null for micro lane (contracts live under tasks/micro/<TASK-ID>/)."
+    },
     "risk_class": {
       "type": "string",
       "enum": ["safe", "review-required", "approval-required"]

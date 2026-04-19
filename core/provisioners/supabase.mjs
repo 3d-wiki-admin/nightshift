@@ -53,7 +53,7 @@ export class SupabaseProvisioner extends BaseProvisioner {
       await this.secrets.write(name, 'SUPABASE_DB_PASSWORD', dbPassword);
     }
 
-    await this.eventStore?.append?.({
+    await this._emit({
       agent: 'infra-provisioner',
       session_id: resolveSessionId(),
       action: 'infra.provisioned',
@@ -67,7 +67,7 @@ export class SupabaseProvisioner extends BaseProvisioner {
     const oldRef = `supabase://keys/${projectRef}/${key}@${Date.now() - 1}`;
     const newRef = `supabase://keys/${projectRef}/${key}@${Date.now()}`;
 
-    await this.eventStore?.append?.({
+    await this._emit({
       agent: 'infra-provisioner',
       session_id: resolveSessionId(),
       action: 'infra.rotated',
