@@ -41,6 +41,11 @@
         }
       }
     },
+    "micro_tasks": {
+      "type": "object",
+      "description": "Task states for micro-lane tasks (wave=null). Keyed by task_id.",
+      "additionalProperties": { "$ref": "#/definitions/taskState" }
+    },
     "open_questions": {
       "type": "array",
       "items": { "type": "string" }

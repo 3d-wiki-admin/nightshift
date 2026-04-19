@@ -36,7 +36,40 @@ export async function appendEvent(logPath, event) {
     filled.cost_usd_estimate = await estimateCost(filled.model, filled.tokens);
   }
   const store = new EventStore(logPath);
-  return await store.append(filled);
+  const written = await store.append(filled);
+
+  // Auto-checkpoint at wave boundaries so /rollback has a clean anchor even
+  // if the orchestrator prompt forgot to tag. Silent no-op outside git repos
+  // or when NIGHTSHIFT_AUTO_CHECKPOINT=0.
+  if (process.env.NIGHTSHIFT_AUTO_CHECKPOINT !== '0') {
+    if (written.action === 'wave.started' && written.wave != null) {
+      await autoTagCheckpoint(logPath, `wave-${written.wave}-start`);
+    } else if (written.action === 'wave.accepted' && written.wave != null) {
+      await autoTagCheckpoint(logPath, `wave-${written.wave}-end`);
+    }
+  }
+
+  return written;
+}
+
+async function autoTagCheckpoint(logPath, label) {
+  // logPath is <project>/tasks/events.ndjson; project root is two levels up.
+  const projectDir = path.resolve(path.dirname(logPath), '..');
+  const isRepo = spawnSync('git', ['-C', projectDir, 'rev-parse', '--git-dir'], { encoding: 'utf8' });
+  if (isRepo.status !== 0) return;
+  const script = new URL('./checkpoint-manager.sh', import.meta.url).pathname;
+  const res = spawnSync('bash', [script, 'tag', label], {
+    cwd: projectDir,
+    encoding: 'utf8',
+    env: process.env
+  });
+  if (res.status !== 0) {
+    // Tag creation can fail on "already exists" — that's OK, idempotent re-run.
+    // Only log unexpected errors.
+    if (!/already exists/i.test(res.stderr || '')) {
+      console.error(`[dispatch] auto-checkpoint '${label}' failed: ${res.stderr.trim().slice(0, 200)}`);
+    }
+  }
 }
 
 // Reviewer model MUST differ from implementer target_model at dispatch time (spec §6.2).

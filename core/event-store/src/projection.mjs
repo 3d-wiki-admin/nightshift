@@ -7,9 +7,27 @@ export function initialState() {
     project: { name: '', constitution_version: 0 },
     context_zone: 'green',
     waves: {},
+    micro_tasks: {},
     open_questions: [],
     paused_tasks: [],
     totals: { tokens: 0, cost_usd_estimate: 0, events: 0 }
+  };
+}
+
+function blankTask() {
+  return {
+    status: 'contracted',
+    risk_class: null,
+    parallel_marker: null,
+    model: null,
+    effort: null,
+    retries: 0,
+    lease: null,
+    gates: {},
+    quality_score: null,
+    tokens: {},
+    evidence_folder: null,
+    last_event_ts: null
   };
 }
 
@@ -28,24 +46,17 @@ function ensureWave(state, wave) {
 }
 
 function ensureTask(state, wave, taskId) {
+  // Micro-lane tasks live outside the waves/ tree and carry wave=null on
+  // their events. Track them in state.micro_tasks so /status and /compliance
+  // can still see them.
+  if (wave == null) {
+    if (!state.micro_tasks) state.micro_tasks = {};
+    if (!state.micro_tasks[taskId]) state.micro_tasks[taskId] = blankTask();
+    return state.micro_tasks[taskId];
+  }
   const w = ensureWave(state, wave);
   if (!w) return null;
-  if (!w.tasks[taskId]) {
-    w.tasks[taskId] = {
-      status: 'contracted',
-      risk_class: null,
-      parallel_marker: null,
-      model: null,
-      effort: null,
-      retries: 0,
-      lease: null,
-      gates: {},
-      quality_score: null,
-      tokens: {},
-      evidence_folder: null,
-      last_event_ts: null
-    };
-  }
+  if (!w.tasks[taskId]) w.tasks[taskId] = blankTask();
   return w.tasks[taskId];
 }
 
