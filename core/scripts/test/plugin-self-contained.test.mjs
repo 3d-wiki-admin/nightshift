@@ -94,11 +94,19 @@ test('plugin hooks live in claude/hooks/hooks.json, NOT in claude/settings.json'
   );
 
   const hooksRaw = await fs.readFile(hooksPath, 'utf8');
-  const hooks = JSON.parse(hooksRaw);
+  const parsed = JSON.parse(hooksRaw);
+  // Plugin hook loader expects the top-level shape { "hooks": { <event>: [...] } }
+  // — NOT the bare-event shape that user-level settings.json accepts. The
+  // first attempt at the fix shipped the bare shape and Claude Code rejected
+  // the plugin with `expected: "record", path: ["hooks"]`.
+  assert.ok(
+    parsed.hooks && typeof parsed.hooks === 'object' && !Array.isArray(parsed.hooks),
+    'claude/hooks/hooks.json must have a top-level "hooks" object wrapper'
+  );
   for (const event of ['SessionStart', 'PreToolUse', 'PostToolUse', 'Stop']) {
     assert.ok(
-      Array.isArray(hooks[event]) && hooks[event].length > 0,
-      `claude/hooks/hooks.json must define at least one ${event} hook`
+      Array.isArray(parsed.hooks[event]) && parsed.hooks[event].length > 0,
+      `claude/hooks/hooks.json must define at least one ${event} hook under the "hooks" wrapper`
     );
   }
 });
