@@ -1,0 +1,14 @@
+{
+  "name": "nightshift",
+  "owner": {
+    "name": "ksokolovsky",
+    "url": "https://github.com/3d-wiki-admin/nightshift"
+  },
+  "plugins": [
+    {
+      "name": "nightshift",
+      "source": "./claude",
+      "description": "Multi-agent development harness on top of Claude Code + Codex CLI. Idea-first intake, contracts before code, retrieval memory, hard gates, full audit trail."
+    }
+  ]
+}
