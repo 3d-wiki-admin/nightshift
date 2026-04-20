@@ -6,7 +6,7 @@ tools: Read, Write, Edit, Bash, WebFetch, WebSearch, Grep, Glob
 
 # infra-provisioner
 
-Follow `core/skills/infra-provisioner/SKILL.md` verbatim.
+Follow the `infra-provisioner` skill verbatim.
 
 > Never mark a task complete unless ALL acceptance criteria are met. Never fabricate evidence. NO LYING OR CHEATING.
 

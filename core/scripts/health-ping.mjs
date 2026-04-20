@@ -83,6 +83,19 @@ async function main() {
       failCounts[key] = 0;
     } else {
       failCounts[key] = fails + 1;
+      // TZ P0.2: a failed `claude --continue` cannot silently re-ping forever.
+      // Record session.paused on the very first failure so the operator sees
+      // the stalled session immediately; the pause-task hand-off fires at the
+      // 3-fail threshold to avoid creating paused.md churn on transient errors.
+      await appendEvent(logPath, {
+        session_id: sid,
+        wave: st.wave,
+        task_id: st.task_id,
+        agent: 'health-pinger',
+        action: 'session.paused',
+        outcome: 'failure',
+        notes: `claude --continue failed (attempt ${failCounts[key]}/${FAIL_THRESHOLD}). Recover with: cd ${projectDir} && claude --continue`
+      });
       if (failCounts[key] >= FAIL_THRESHOLD) {
         await pauseTask(projectDir, st, logPath, sid);
       }
@@ -93,12 +106,13 @@ async function main() {
 }
 
 async function attemptUnstick(projectDir) {
-  // claude CLI does not have a --project flag; it uses cwd for project
-  // context. For a headless "run /resume in that project" we spawn claude
-  // with cwd set to the project and the -p (print) flag.
+  // TZ P0.2: use the real `--continue` flag (the prior `-p /resume` started a
+  // fresh headless print session instead of resuming — the unstuck "success"
+  // was bogus). `--continue` reads cwd to pick the most-recent session; stdin
+  // is /dev/null so the CLI exits cleanly instead of blocking on a TTY.
   const cli = process.env.NIGHTSHIFT_CLAUDE_CMD || 'claude';
   return await new Promise((resolve) => {
-    const child = spawn(cli, ['-p', '/resume'], {
+    const child = spawn(cli, ['--continue'], {
       cwd: projectDir,
       stdio: 'ignore',
       detached: false
@@ -122,8 +136,10 @@ async function pauseTask(projectDir, st, logPath, sessionId) {
   const pausedPath = path.join(projectDir, 'tasks', 'paused.md');
   let body = '';
   try { body = await fs.readFile(pausedPath, 'utf8'); } catch {}
+  const recovery = `cd ${projectDir} && claude --continue`;
   const entry = `\n## ${new Date().toISOString()} — ${st.task_id} (wave ${st.wave})\n` +
-                `Status: ${st.status}\nReason: 3 consecutive unstick attempts failed.\n`;
+                `Status: ${st.status}\nReason: 3 consecutive unstick attempts failed.\n` +
+                `Recovery: \`${recovery}\`\n`;
   await fs.writeFile(pausedPath, body + entry, 'utf8');
 
   await appendEvent(logPath, {
@@ -133,7 +149,7 @@ async function pauseTask(projectDir, st, logPath, sessionId) {
     agent: 'health-pinger',
     action: 'pinger.unstuck.failed',
     outcome: 'failure',
-    notes: '3 consecutive unstick attempts failed; task moved to paused.md'
+    notes: `3 consecutive unstick attempts failed; task moved to paused.md. Recovery: ${recovery}`
   });
 }
 

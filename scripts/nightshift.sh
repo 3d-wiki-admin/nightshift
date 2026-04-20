@@ -31,9 +31,12 @@
 #   nightshift worktree <cmd> ...          — core/scripts/worktree-manager.sh
 #   nightshift run-with-secrets <cmd> ...  — core/scripts/run-with-secrets.sh
 #   nightshift snapshot <dir>              — core/scripts/snapshot.sh
+#   nightshift launchd install|uninstall|status  — manage macOS launchd agents
 #
-# Wave B will add the user-facing `init`, `new`, `doctor` subcommands that
-# drive the idea-first flow.
+# v1.1 user-facing subcommands (idea-first flow):
+#   nightshift init <path> [--claude-now]   — register + scaffold meta
+#   nightshift new  <path> [--claude-now]   — alias for init
+#   nightshift doctor                       — preflight environment check
 set -euo pipefail
 
 # ---------- resolve repo root even when invoked via a symlink ----------
@@ -52,7 +55,15 @@ VERSION="$(node -e "console.log(require('$root/package.json').version)" 2>/dev/n
 
 # ---------- helpers ----------
 print_help() {
-  sed -n '1,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  # Print the top banner comment block verbatim (stripping the leading `# `).
+  # The range stops at the first `set -euo pipefail` line so help stays in
+  # sync when the header grows — previous fixed 1..40 window leaked shell
+  # directives once new subcommands were appended.
+  awk '
+    /^set -euo pipefail/ { exit }
+    NR == 1 { next }
+    { sub(/^# ?/, ""); print }
+  ' "${BASH_SOURCE[0]}"
 }
 
 die() { echo "nightshift: $*" >&2; exit 2; }
@@ -197,6 +208,59 @@ case "$sub" in
       die "usage: nightshift scaffold <project-path>"
     fi
     node "$root/core/scripts/nightshift-scaffold.mjs" "$project_path" "$@"
+    ;;
+
+  launchd)
+    # TZ fix-batch P0.6: unified CLI wrapper for launchd install/uninstall/
+    # status. The prompt layer and docs now reference `nightshift launchd`
+    # exclusively; raw `scripts/install-launchd.sh` is kept as the bundled
+    # implementation (with the `--project` guard intact).
+    op="${1:-}"
+    shift || true
+    case "$op" in
+      install)
+        proj=""
+        passthru=()
+        while [ $# -gt 0 ]; do
+          case "$1" in
+            --project) shift; proj="${1:-}"; shift ;;
+            *) passthru+=("$1"); shift ;;
+          esac
+        done
+        if [ -z "$proj" ]; then
+          die "usage: nightshift launchd install --project <path> [--allow-self-target]"
+        fi
+        exec bash "$root/scripts/install-launchd.sh" --project "$proj" "${passthru[@]}"
+        ;;
+      uninstall)
+        exec bash "$root/scripts/install-launchd.sh" --uninstall "$@"
+        ;;
+      status)
+        if [ "$(uname)" != "Darwin" ]; then
+          echo "launchd is macOS-only; nothing to report." >&2
+          exit 0
+        fi
+        loaded="$(launchctl list 2>/dev/null | awk '/ai\.nightshift/ { print "  loaded: " $3 " (pid=" $1 ")" }')"
+        if [ -n "$loaded" ]; then
+          echo "nightshift launchd agents:"
+          echo "$loaded"
+          exit 0
+        else
+          echo "nightshift launchd agents: not loaded." >&2
+          exit 1
+        fi
+        ;;
+      ''|-h|--help|help)
+        cat >&2 <<'USAGE'
+Usage:
+  nightshift launchd install --project <path> [--allow-self-target]
+  nightshift launchd uninstall
+  nightshift launchd status
+USAGE
+        [ -z "${op:-}" ] && exit 2 || exit 0
+        ;;
+      *) die "unknown launchd op '$op' (expected install|uninstall|status)" ;;
+    esac
     ;;
 
   *) die "unknown subcommand '$sub'. Try: nightshift --help" ;;

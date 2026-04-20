@@ -17,8 +17,8 @@
 // would require direct OpenAI API keys (different billing and UX). The
 // hardening below exists so the subprocess path stops being fragile.
 
-import { spawn, spawnSync } from 'node:child_process';
-import { promises as fs } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { promises as fs, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 export class CodexError extends Error {
@@ -33,9 +33,27 @@ export class CodexError extends Error {
 
 export const EXIT_CODEX_UNAVAILABLE = 5;
 
+// Direct scan of process.env.PATH. We intentionally do NOT shell out to
+// `bash -lc 'command -v codex'` because a login shell re-sources profile
+// files and can discard a PATH injected by the caller (tests prepend a
+// fake codex dir to PATH; that must be honored).
 export function codexAvailable() {
-  const res = spawnSync('bash', ['-lc', 'command -v codex'], { encoding: 'utf8' });
-  return res.status === 0 && res.stdout.trim().length > 0;
+  const raw = process.env.PATH || '';
+  if (!raw) return false;
+  const sep = process.platform === 'win32' ? ';' : ':';
+  const exts = process.platform === 'win32'
+    ? (process.env.PATHEXT || '.EXE;.CMD;.BAT').split(';').map(e => e.toLowerCase())
+    : [''];
+  for (const dir of raw.split(sep)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      const candidate = path.join(dir, `codex${ext}`);
+      try {
+        if (existsSync(candidate) && statSync(candidate).isFile()) return true;
+      } catch { /* unreadable entries are treated as absent */ }
+    }
+  }
+  return false;
 }
 
 // Error taxonomy. Checked in order; first match wins.

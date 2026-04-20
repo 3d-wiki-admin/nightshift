@@ -81,7 +81,7 @@ fi
 if [ ! -f "$project_abs/tasks/events.ndjson" ] && [ ! -f "$project_abs/memory/constitution.md" ]; then
   echo "install-launchd: '$project_abs' does not look like a nightshift-managed project" >&2
   echo "  (missing tasks/events.ndjson AND memory/constitution.md)" >&2
-  echo "  Run 'nightshift init $project_abs' first, then re-run install-launchd." >&2
+  echo "  Run 'nightshift init $project_abs' first, then re-run 'nightshift launchd install --project $project_abs'." >&2
   exit 2
 fi
 

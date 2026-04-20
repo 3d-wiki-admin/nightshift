@@ -8,6 +8,13 @@ import { spawnSync } from 'node:child_process';
 const ROOT = path.resolve(new URL('../../..', import.meta.url).pathname);
 const SCRIPT = path.join(ROOT, 'scripts', 'install-launchd.sh');
 
+// install-launchd.sh short-circuits with exit 0 on non-Darwin before arg
+// validation fires, so the two "refuses bad arg" tests below can only run
+// on macOS. Tests 3/4 handle the short-circuit inline because they also
+// assert a Darwin-specific behavior branch.
+const darwin = process.platform === 'darwin';
+const onDarwin = darwin ? test : test.skip;
+
 function run(args, { env = {} } = {}) {
   return spawnSync('bash', [SCRIPT, ...args], {
     encoding: 'utf8',
@@ -15,13 +22,13 @@ function run(args, { env = {} } = {}) {
   });
 }
 
-test('install-launchd without --project exits 2 and shows the usage line', () => {
+onDarwin('install-launchd without --project exits 2 and shows the usage line', () => {
   const res = run([]);
   assert.equal(res.status, 2);
   assert.match(res.stderr, /--project/);
 });
 
-test('install-launchd refuses non-existent project dir', () => {
+onDarwin('install-launchd refuses non-existent project dir', () => {
   const res = run(['--project', '/nonexistent-path-for-ns-test-xyz']);
   assert.equal(res.status, 2);
   assert.match(res.stderr, /not found|not a directory/);

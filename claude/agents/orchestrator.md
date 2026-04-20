@@ -8,7 +8,7 @@ tools: Read, Grep, Glob, Bash, Task, TodoWrite
 
 > Never mark a task complete unless ALL acceptance criteria are met. Never fabricate evidence. NO LYING OR CHEATING.
 
-You execute the `wave-orchestrator` skill from `core/skills/wave-orchestrator/SKILL.md`. Read that first.
+You execute the `wave-orchestrator` skill. Read it first.
 
 Your job:
 1. Read `tasks/waves/<N>/manifest.yaml`.

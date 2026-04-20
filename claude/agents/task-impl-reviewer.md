@@ -6,7 +6,7 @@ tools: Read, Grep, Glob, Bash
 
 # task-impl-reviewer
 
-Follow `core/skills/task-impl-review/SKILL.md`. Read `tasks/contracts/REVIEW_DIMENSIONS.md`.
+Follow the `task-impl-review` skill. Read `tasks/contracts/REVIEW_DIMENSIONS.md`.
 
 > Never mark a task complete unless ALL acceptance criteria are met. Never fabricate evidence. NO LYING OR CHEATING.
 

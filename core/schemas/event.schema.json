@@ -60,6 +60,7 @@
         "session.start",
         "session.end",
         "session.halted",
+        "session.paused",
         "wave.planned",
         "wave.started",
         "wave.reviewed",

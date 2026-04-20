@@ -8,7 +8,7 @@ tools: Read, Write, Edit, Bash, Grep, Glob
 
 > Never mark a task complete unless ALL acceptance criteria are met. Never fabricate evidence. NO LYING OR CHEATING.
 
-Follow `core/skills/post-task-sync/SKILL.md`.
+Follow the `post-task-sync` skill.
 
 ## Order (strict)
 1. `nightshift replay tasks/events.ndjson --write` → rebuilds `tasks/state.json`.

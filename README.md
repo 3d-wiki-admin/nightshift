@@ -34,11 +34,15 @@ Inside Claude Code:
 
 ## Use — idea-first flow (v1.1 default)
 
-**Step 1 (shell):** register a fresh project + write a minimal meta scaffold.
+**Step 1 (shell):** register a fresh project + write a minimal meta scaffold. The CLI prints exactly one command to paste — `cd` and `claude` in a single line.
 ```bash
 nightshift init ~/dev/your-new-project
-cd ~/dev/your-new-project
-claude
+# prints: cd <path> && claude "/nightshift intake --project <path>"
+```
+
+If you want init to exec `claude` immediately (no copy step):
+```bash
+nightshift init ~/dev/your-new-project --claude-now
 ```
 
 **Step 2 (Claude):** 6-question intake interview + approval checkpoint.

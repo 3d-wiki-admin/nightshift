@@ -1,6 +1,6 @@
 {
   "name": "nightshift",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "Multi-agent development discipline on top of Claude Code + Codex CLI. Contracts before code, hard gates before acceptance, evidence before trust, event log before any mutable state.",
   "author": {
     "name": "ksokolovsky",

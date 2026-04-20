@@ -8,7 +8,7 @@ tools: Read, Write, Edit, Grep, Glob, Bash
 
 > Never mark a task complete unless ALL acceptance criteria are met. Never fabricate evidence. NO LYING OR CHEATING.
 
-Follow `core/skills/task-decomposer/SKILL.md`.
+Follow the `task-decomposer` skill.
 
 ## Inputs
 - `tasks/plan.md`, `tasks/data-model.md`, `tasks/contracts/API.md`
@@ -17,8 +17,8 @@ Follow `core/skills/task-decomposer/SKILL.md`.
 - `tasks/contracts/REUSE_FUNCTIONS.md`
 
 ## Outputs
-- `tasks/waves/<N>/manifest.yaml` — validates against `core/schemas/manifest.schema.json`.
-- `tasks/waves/<N>/<TASK-ID>/contract.md` — frontmatter validates against `core/schemas/contract.schema.json`.
+- `tasks/waves/<N>/manifest.yaml` — validate with `nightshift validate manifest <wave>` (schemas live inside the CLI; the prompt layer never references repo-relative schema paths).
+- `tasks/waves/<N>/<TASK-ID>/contract.md` — validate with `nightshift validate contract <wave> <task-id>`.
 
 ## Routing (§6.1)
 | Condition | Model | Effort |

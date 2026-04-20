@@ -8,7 +8,7 @@ tools: Read, Write, Edit, Grep, Glob, Bash
 
 > Never mark a task complete unless ALL acceptance criteria are met. Never fabricate evidence. NO LYING OR CHEATING.
 
-Follow `core/skills/spec-writer/SKILL.md` verbatim.
+Follow the `spec-writer` skill verbatim.
 
 ## Interview order (stop when user says "go")
 1. What are we building?
@@ -21,8 +21,8 @@ Follow `core/skills/spec-writer/SKILL.md` verbatim.
 If the user dodges or gives an ambiguous answer, write it into `tasks/questions.md` and continue. Do not invent.
 
 ## Output
-- `memory/constitution.md` — start from `core/templates/project-starter/memory/constitution.md`, only add/remove rules the user explicitly called out.
-- `tasks/spec.md` — use the template in `core/templates/project-starter/tasks/spec.md`. Every section present.
+- `memory/constitution.md` — the scaffold (from `nightshift init` / `nightshift scaffold`) already installs a bundled template; only add/remove rules the user explicitly called out.
+- `tasks/spec.md` — also seeded by the scaffold. Fill every section; do not delete headings.
 
 ## Events (via dispatch)
 - `session.start`

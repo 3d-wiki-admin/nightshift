@@ -38,7 +38,7 @@ async function bootstrapStalled({ staleMinutes = 30 } = {}) {
   return project;
 }
 
-test('health-ping invokes claude with -p /resume and cwd=projectDir on stalled task', async () => {
+test('health-ping invokes claude with --continue and cwd=projectDir on stalled task', async () => {
   const project = await bootstrapStalled({ staleMinutes: 30 });
   const fakeDir = tmp();
   await fs.mkdir(fakeDir, { recursive: true });
@@ -69,7 +69,7 @@ test('health-ping invokes claude with -p /resume and cwd=projectDir on stalled t
     txt.includes(`CWD=${project}`) || txt.includes(`CWD=${realProject}`),
     `expected claude cwd to be the project dir. got:\n${txt}`
   );
-  assert.match(txt, /ARGV=-p \/resume/, `expected claude args "-p /resume". got:\n${txt}`);
+  assert.match(txt, /ARGV=--continue/, `expected claude args "--continue". got:\n${txt}`);
 
   // health-ping should have emitted pinger.unstuck (ok) because the fake
   // claude exited 0.
@@ -83,7 +83,7 @@ test('health-ping invokes claude with -p /resume and cwd=projectDir on stalled t
   await fs.rm(fakeDir, { recursive: true, force: true });
 });
 
-test('health-ping records unstick failure when claude exits non-zero', async () => {
+test('health-ping records unstick failure AND emits session.paused when claude exits non-zero', async () => {
   const project = await bootstrapStalled({ staleMinutes: 30 });
   const fakeDir = tmp();
   await fs.mkdir(fakeDir, { recursive: true });
@@ -100,6 +100,15 @@ test('health-ping records unstick failure when claude exits non-zero', async () 
   const unstuck = events.find(e => e.action === 'pinger.unstuck');
   assert.ok(unstuck);
   assert.equal(unstuck.outcome, 'failure');
+
+  // TZ P0.2: failed auto-resume must record session.paused so the operator
+  // sees the stall; the pinger cannot silently re-ping forever.
+  const paused = events.find(e => e.action === 'session.paused');
+  assert.ok(paused, 'expected session.paused event on failed --continue');
+  assert.equal(paused.outcome, 'failure');
+  assert.match(paused.notes || '', /claude --continue/);
+  assert.match(paused.notes || '', /Recover with:/);
+
   await fs.rm(project, { recursive: true, force: true });
   await fs.rm(fakeDir, { recursive: true, force: true });
 });

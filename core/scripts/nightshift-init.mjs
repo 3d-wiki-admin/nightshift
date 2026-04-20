@@ -17,6 +17,7 @@
 // (nightshift-scaffold.mjs, Wave B.3).
 
 import { promises as fs } from 'node:fs';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { Registry } from '../registry/index.mjs';
 import { appendEvent } from './dispatch.mjs';
@@ -173,6 +174,10 @@ export async function init(projectPath, {
 }
 
 function formatSummary(result) {
+  // TZ fix-batch P1.1: user gets ONE command to copy-paste. Shell does the
+  // cd, then launches claude with the intake slash-command in one go. No
+  // three-step "open claude, then paste, then…" dance.
+  const oneCommand = `cd ${result.project_path} && claude "${result.next_command}"`;
   return [
     '',
     `  ✓ doctor prerequisites satisfied`,
@@ -183,10 +188,8 @@ function formatSummary(result) {
     `Project:  ${result.project_path}`,
     `Stage:    ${result.stage}`,
     '',
-    `Next:`,
-    `  cd ${result.project_path}`,
-    `  claude`,
-    `  ${result.next_command}`,
+    `Next (copy-paste one command):`,
+    `  ${oneCommand}`,
     ''
   ].join('\n');
 }
@@ -195,23 +198,46 @@ async function main() {
   const args = process.argv.slice(2);
   if (args[0] === '-h' || args[0] === '--help' || !args[0]) {
     process.stderr.write(`
-Usage: nightshift-init.mjs <project-path> [--force] [--json]
+Usage: nightshift-init.mjs <project-path> [--force] [--json] [--claude-now]
 
 Registers <project-path> in the global nightshift registry (stage=intake) and
 writes a minimal meta scaffold. Does NOT create memory/constitution.md or
 template files — those only appear after the intake interview is approved.
+
+Flags:
+  --force        re-register a path whose memory/constitution.md already exists
+  --json         machine-readable output
+  --claude-now   after init, exec \`claude "/nightshift intake --project <path>"\`
+                 in the project dir — user gets straight into the interview
     `.trim() + '\n');
     process.exit(args[0] ? 0 : 2);
   }
   const projectPath = args[0];
   const force = args.includes('--force');
   const json = args.includes('--json');
+  const claudeNow = args.includes('--claude-now');
   try {
     const result = await init(projectPath, { force });
     if (json) {
       process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     } else {
       process.stdout.write(formatSummary(result));
+    }
+    if (claudeNow) {
+      // Replace this process with `claude <next_command>` in the project
+      // dir — user doesn't have to copy anything. If claude is missing we
+      // fall back to the printed summary (non-fatal).
+      process.stdout.write(`\n[nightshift init] --claude-now: launching claude "${result.next_command}"...\n`);
+      const child = spawn('claude', [result.next_command], {
+        cwd: result.project_path,
+        stdio: 'inherit'
+      });
+      child.on('error', err => {
+        process.stderr.write(`[nightshift init] could not launch claude: ${err.message}. Paste the command above manually.\n`);
+        process.exit(0);
+      });
+      child.on('exit', code => process.exit(code || 0));
+      return;
     }
   } catch (err) {
     if (err instanceof InitError) {

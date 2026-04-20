@@ -1,6 +1,6 @@
 {
   "name": "nightshift",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Multi-agent development harness on top of Claude Code + Codex CLI — idea-first intake, contracts before code, retrieval memory, hard gates, full audit trail.",
   "license": "MIT",

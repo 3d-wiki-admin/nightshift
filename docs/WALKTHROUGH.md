@@ -25,22 +25,41 @@ Inside Claude Code:
 
 ## 1. Bootstrap project (23:05)
 
+The recommended entry point (v1.1+) is `nightshift init`, which registers
+the project at stage=intake and hands back exactly one command to paste:
+
 ```
-$ cd ~/dev
-$ mkdir groceries && cd groceries
-$ claude
-> /bootstrap
+$ nightshift init ~/dev/groceries
+  ✓ doctor prerequisites satisfied
+  ✓ project registered     ns_…
+  ✓ minimal meta scaffold  (4 files)
+  — full scaffold will run AFTER intake approval
+
+Project:  /Users/user/dev/groceries
+Stage:    intake
+
+Next (copy-paste one command):
+  cd /Users/user/dev/groceries && claude "/nightshift intake --project /Users/user/dev/groceries"
 ```
 
-Output:
+Paste it; the Claude session opens in the project dir and jumps straight
+into the intake interview. `/nightshift confirm-scaffold` after approval
+runs the real scaffold (template copy, memory snapshot, retrieval memory
+seeding, `git init -b main` + initial commit).
+
+Output after `/nightshift confirm-scaffold`:
 ```
-✓ memory/constitution.md (from template)
-✓ tasks/{spec,plan,data-model,research}.md (stubs)
+✓ memory/constitution.md (template + intake snapshot)
+✓ tasks/{spec,plan,data-model,research}.md
 ✓ tasks/contracts/{TASK_TEMPLATE,REVIEW_DIMENSIONS,...}.md
 ✓ .env.template, .github/workflows/ci.yml, CLAUDE.md, README.md
-✓ tasks/events.ndjson (empty)
-✓ git init (branch main)
+✓ memory/{decisions,incidents}.ndjson + memory/{services,reuse-index}.json (seeded)
+✓ tasks/events.ndjson (intake-approval recorded exactly once)
+✓ git init -b main + initial commit (`chore: nightshift scaffold`)
 ```
+
+Legacy `/bootstrap` still exists as a repair command — use it only to
+re-seed a project whose files were accidentally deleted.
 
 ## 2. Spec interview (23:10)
 
@@ -151,7 +170,7 @@ Orchestrator starts dispatching tasks. User closes laptop lid.
 
 ## 8. Overnight (between runs)
 
-- Every 30 min: `ai.nightshift.pinger` runs. If a task went stale >15 min, it invokes `claude -p /resume` to unstick.
+- Every 30 min: `ai.nightshift.pinger` runs. If a task went stale >15 min, it invokes `claude --continue` (cwd = project dir) to unstick. If that exits non-zero, the pinger emits `session.paused` and, after 3 consecutive failures, writes the task into `tasks/paused.md` with a recovery command.
 - At 08:00: `ai.nightshift.digest` writes `~/.nightshift/digest/2026-04-20.md` with: accepted tasks, paused tasks, token ledger, open questions. `say "Digest is ready"` plays.
 
 ## 9. Morning (08:15)

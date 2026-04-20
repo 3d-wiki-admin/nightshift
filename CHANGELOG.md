@@ -3,6 +3,87 @@
 All notable changes to nightshift are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] — 2026-04-20
+
+Fix-batch closing runtime/wiring gaps found in the v1.1 runtime-readiness
+audit (`nightshift_v1_1_fix_tz.md`). Single-project runtime readiness — no
+spec expansion, just closing the honest holes that made v1.1 "demonstrably
+running" only on the developer's own Mac.
+
+### Fixed — Fix-A (P0, runtime correctness)
+
+- `core/codex/client.mjs` — `codexAvailable()` now scans
+  `process.env.PATH` directly instead of shelling out to
+  `bash -lc 'command -v codex'`. A login shell re-sources profile files
+  and discarded the PATH injected by the caller; tests that prepend a
+  fake codex dir now see it reliably. The fix also removes the
+  `spawnSync` dependency from the codex module.
+- `core/scripts/test/install-launchd.test.mjs` — the two tests that
+  assert specific stderr exit paths (no-`--project`, non-existent path)
+  are `test.skip` on non-Darwin; the script itself still short-circuits
+  with exit 0 on non-Darwin, and the suite no longer depends on that
+  path on Linux CI.
+- `core/scripts/health-ping.mjs` — resume path now spawns
+  `claude --continue` with `cwd: projectDir` (the prior `claude -p
+  /resume` started a fresh headless print session and fabricated an
+  `unstuck=success` signal). Non-zero / timeout exits emit a new
+  `session.paused` event with a one-line recovery command so the
+  operator sees the stall; the 3-fail threshold still writes the task
+  into `tasks/paused.md`. Schema gets `session.paused` added to the
+  action enum.
+- `claude/commands/*.md` and `claude/agents/*.md` — no more
+  repo-relative `core/skills/**` / `core/templates/**` /
+  `core/schemas/**` references; skills are referenced by name, schemas
+  and templates are delegated to the CLI (which carries them bundled).
+  `claude/bin/runtime/scripts/wave-reviewer.mjs` and its repo source
+  both lose the literal `core/skills/wave-review/SKILL.md` string from
+  the prompt they send to the reviewer. Regression test:
+  `core/scripts/test/fixbatch-claude-layer-paths.test.mjs`.
+- `claude/commands/nightshift.md` — `confirm-scaffold` no longer
+  instructs Claude to append `decision.recorded` via
+  `nightshift dispatch append`; the scaffold CLI is now the single
+  writer of the intake-approval event. The prompt carries an explicit
+  "NEVER append the approval event yourself" rule. Regression test:
+  `core/scripts/test/fixbatch-intake-approval-single-writer.test.mjs`.
+- `core/scripts/nightshift-scaffold.mjs` — after a successful scaffold,
+  the CLI runs `git init -b main` (falls back to default branch +
+  rename for older git), seeds a `.gitignore` that excludes
+  `.nightshift/` local state, configures a scoped committer when the
+  host has none, and creates a `chore: nightshift scaffold` initial
+  commit. `/preflight`'s "clean-or-at-least-committed" gate now passes
+  on the first wave. Regression test:
+  `core/scripts/test/fixbatch-scaffold-git-init.test.mjs`.
+- `scripts/nightshift.sh` — new `nightshift launchd {install|
+  uninstall|status}` subcommand, wrapping the underlying install-
+  launchd.sh. `install` requires `--project`; `status` reports loaded
+  agents via `launchctl list`; non-Darwin produces a clear "macOS-only"
+  message instead of silently exiting. Regression test:
+  `core/scripts/test/fixbatch-nightshift-launchd-cli.test.mjs`.
+
+### Changed — Fix-B (P1, UX sync)
+
+- `core/scripts/nightshift-init.mjs` — instead of a three-step
+  `cd / claude / paste` instruction, the CLI prints exactly one
+  copy-paste command: `cd <path> && claude "/nightshift intake
+  --project <path>"`. A new `--claude-now` flag skips the copy step
+  entirely — on hosts that have `claude` on PATH, init execs straight
+  into the intake session. Regression test:
+  `core/scripts/test/fixbatch-init-one-command.test.mjs`.
+- `claude/.claude-plugin/plugin.json` — version bumped to `1.1.1`.
+- `package.json` — version bumped to `1.1.1`.
+- `docs/WALKTHROUGH.md` — overnight section now describes the real
+  `claude --continue` resume path and the `session.paused` / paused.md
+  recovery behavior.
+
+### Notes
+- Total tests after fix-batch: 239 (Darwin). On non-Darwin the
+  install-launchd suite now skips 2 tests instead of failing them,
+  so the delta between platforms is finite and deliberate.
+- Live-run gaps carried over from v1.1 (Claude plugin install on the
+  user's Mac, happy-path Codex dispatch with real auth, overnight
+  launchd cycle) still apply — these can only be verified on the
+  actual target machine.
+
 ## [1.1.0] — 2026-04-20
 
 Hardening + idea-first UX + retrieval memory + adapter honesty. Scope

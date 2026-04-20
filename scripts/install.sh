@@ -91,7 +91,7 @@ if [ "$link_bin" = "1" ]; then
   fi
 fi
 
-# 5. Codex plugin — available at $root/codex (no auto-install, advisory).
+# 5. Codex CLI adapter — available at $root/codex (no auto-install, advisory).
 if [ -d "$root/codex" ]; then
   echo "[install] Codex adapter lives at: $root/codex"
 fi
@@ -99,8 +99,8 @@ fi
 # 6. Launchd — opt-in and MUST target a concrete project path.
 #    Nightshift core dir is NOT an acceptable target.
 if [ "$skip_launchd" = "0" ] && [ "$(uname)" = "Darwin" ]; then
-  echo "[install] launchd agents require an explicit --project <path> on install-launchd.sh;" >&2
-  echo "[install] run it after you create a project with 'nightshift init <path>'." >&2
+  echo "[install] launchd agents require an explicit --project <path>." >&2
+  echo "[install] after 'nightshift init <path>' run: nightshift launchd install --project <path>" >&2
 fi
 
 # 7. Self-test — full 100+ suite.

@@ -48,7 +48,7 @@ async function buildPrompt(project, wave) {
   return [
     '# You are the wave-reviewer.',
     '',
-    'Follow core/skills/wave-review/SKILL.md verbatim.',
+    'Follow the `wave-review` skill verbatim.',
     '',
     '> Never mark a wave complete unless cross-task checks pass. Never fabricate evidence. NO LYING OR CHEATING.',
     '',

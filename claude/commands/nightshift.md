@@ -24,10 +24,9 @@ The intake-interview subagent conducts a six-question interview + proposes stack
 
 Only runs after `intake` ended with verdict=approved. Execute the flow:
 1. Read `.nightshift/intake.ndjson`. Find the most recent entry with `kind=proposal` and confirm it is flagged as `approved: true`. If not, refuse and tell user to finish the interview.
-2. Run: `nightshift dispatch append < /tmp/decision.json` to record a `decision.recorded` event pointing at the approval. Use a temp file populated via Bash.
-3. Run: `nightshift scaffold <path>` (shell CLI). It expands the minimal meta into the full project: memory/constitution.md, tasks/spec.md, tasks/contracts/, .env.template, .github/workflows/ci.yml, CLAUDE.md — all populated from the intake answers.
-4. Ask the user whether to install the launchd pinger/digest now (optional). If yes, run `bash scripts/install-launchd.sh --project <path>` (via the packaged runtime path).
-5. Print a summary table and point them at `/plan` as the next step.
+2. Run: `nightshift scaffold <path>` (shell CLI). The CLI is the ONLY writer of the intake-approval `decision.recorded` event — it emits exactly one and also expands the minimal meta into the full project: memory/constitution.md (incl. intake snapshot), tasks/spec.md, tasks/contracts/, .env.template, .github/workflows/ci.yml, CLAUDE.md, memory/{decisions,incidents}.ndjson + memory/{services,reuse-index}.json, and runs `git init -b main` with an initial commit if needed. **NEVER append the approval event yourself — doing so would create a duplicate decision.recorded for the same approval.**
+3. Ask the user whether to install the launchd pinger/digest now (optional). If yes, run `nightshift launchd install --project <path>`.
+4. Print a summary table and point them at `/plan` as the next step.
 
 ## `start`  (legacy — intake-interview + confirm-scaffold behind one command)
 

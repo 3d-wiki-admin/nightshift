@@ -7,7 +7,7 @@ Invoke the `orchestrator` subagent via the Task tool to run the wave.
 
 Before dispatch:
 1. Run `/preflight` equivalent checks (constitution present, events log writable, git tree clean or at least committed).
-2. Confirm the wave's manifest validates against `core/schemas/manifest.schema.json`.
+2. Confirm the wave's manifest validates: `nightshift validate manifest <wave>` (the CLI carries the bundled schema; prompt layer never references the repo-relative schema path).
 3. Tag a pre-wave checkpoint: `nightshift checkpoint tag wave-<N>-start`.
 
 The orchestrator will:

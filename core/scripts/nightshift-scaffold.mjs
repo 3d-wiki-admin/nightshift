@@ -16,6 +16,7 @@
 //   7. Return summary.
 
 import { promises as fs } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Registry } from '../registry/index.mjs';
@@ -298,6 +299,11 @@ export async function scaffold(project, {
   // Clear the intake-pending marker (convert it to intake-complete).
   await fs.rename(intakeMarker, path.join(abs, '.nightshift', 'intake-complete')).catch(() => {});
 
+  // TZ fix-batch P0.5: seed a git repo + initial commit so the `/preflight`
+  // guard ("is git tree clean or at least committed?") passes on the first
+  // wave. Skipped if a repo already exists in the project dir.
+  const gitInit = await maybeInitGit(abs);
+
   return {
     project_id: projectId,
     project_path: abs,
@@ -305,8 +311,71 @@ export async function scaffold(project, {
     files_copied: copied.length,
     files_skipped: skipped.length,
     constitution: con?.path,
-    spec: spec?.path
+    spec: spec?.path,
+    git: gitInit
   };
+}
+
+async function maybeInitGit(projectDir) {
+  const existing = path.join(projectDir, '.git');
+  if (await pathExists(existing)) return { initialized: false, reason: 'repo_already_present' };
+
+  const git = spawnSync('git', ['--version'], { encoding: 'utf8' });
+  if (git.status !== 0) return { initialized: false, reason: 'git_not_on_path' };
+
+  const runGit = (args, opts = {}) =>
+    spawnSync('git', args, { cwd: projectDir, encoding: 'utf8', ...opts });
+
+  const init = runGit(['init', '-b', 'main']);
+  if (init.status !== 0) {
+    // Older git (<2.28) doesn't know -b; fall back to default branch +
+    // manual rename. We still emit a diagnostic so callers can see why
+    // the branch ended up as `master`.
+    const legacy = runGit(['init']);
+    if (legacy.status !== 0) {
+      return { initialized: false, reason: 'git_init_failed', stderr: (init.stderr || legacy.stderr || '').trim() };
+    }
+    runGit(['checkout', '-b', 'main']);
+  }
+
+  // Seed a .gitignore tailored to nightshift — .nightshift/ is local-state
+  // that must never land in the repo. Leave existing one alone if present.
+  const gi = path.join(projectDir, '.gitignore');
+  if (!await pathExists(gi)) {
+    const body = [
+      'node_modules/',
+      '.env',
+      '.env.local',
+      '.env.*.local',
+      '.next/',
+      'dist/',
+      'build/',
+      '.DS_Store',
+      '# nightshift local state (registry cache, intake markers, ping failcounts)',
+      '.nightshift/',
+      ''
+    ].join('\n');
+    await fs.writeFile(gi, body, 'utf8');
+  }
+
+  // Stage everything we just wrote. The commit message intentionally
+  // doesn't reference the event log — that surface is internal state.
+  const add = runGit(['add', '-A']);
+  if (add.status !== 0) {
+    return { initialized: true, committed: false, reason: 'git_add_failed', stderr: (add.stderr || '').trim() };
+  }
+
+  // Local committer config when the host has none configured; `git commit`
+  // exits non-zero with a cryptic message otherwise. Scoped to this repo.
+  runGit(['config', 'user.email', 'nightshift@local']);
+  runGit(['config', 'user.name', 'nightshift scaffold']);
+
+  const commit = runGit(['commit', '-m', 'chore: nightshift scaffold']);
+  if (commit.status !== 0) {
+    return { initialized: true, committed: false, reason: 'git_commit_failed', stderr: (commit.stderr || '').trim() };
+  }
+
+  return { initialized: true, committed: true, branch: 'main' };
 }
 
 async function main() {

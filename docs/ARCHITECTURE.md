@@ -31,7 +31,7 @@ nightshift/
 │   ├── skills/        # implementer + context-packer prompts
 │   └── automations/   # nightshift.json manifest (load-bearing only if codex-cli auto-discovers it; dispatch works without)
 ├── launchd/           # macOS overnight safety (pinger + digest plists)
-└── scripts/           # install.sh + install-launchd.sh
+└── scripts/           # install.sh + install-launchd.sh (launchd is now also reachable via `nightshift launchd install|uninstall|status`)
 ```
 
 ## Data flow (one task)
