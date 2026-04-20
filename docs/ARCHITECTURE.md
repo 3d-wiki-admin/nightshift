@@ -27,9 +27,9 @@ nightshift/
 │   ├── commands/      # 16 slash commands
 │   ├── hooks/         # 6 hook scripts + settings.json wiring
 │   └── settings.json
-├── codex/             # Codex CLI plugin (thin frontend)
-│   ├── skills/        # implementer + context-packer adapter prompts
-│   └── automations/   # nightshift.json manifest
+├── codex/             # Codex CLI adapter (not a true plugin — codex-cli 0.121 has no plugin system)
+│   ├── skills/        # implementer + context-packer prompts
+│   └── automations/   # nightshift.json manifest (load-bearing only if codex-cli auto-discovers it; dispatch works without)
 ├── launchd/           # macOS overnight safety (pinger + digest plists)
 └── scripts/           # install.sh + install-launchd.sh
 ```

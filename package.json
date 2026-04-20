@@ -1,8 +1,8 @@
 {
   "name": "nightshift",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
-  "description": "Multi-agent development plugin on top of Claude Code + Codex CLI — describe a project in chat, sleep, wake up to a reviewed, deployed implementation with full audit trail.",
+  "description": "Multi-agent development harness on top of Claude Code + Codex CLI — idea-first intake, contracts before code, retrieval memory, hard gates, full audit trail.",
   "license": "MIT",
   "author": "ksokolovsky",
   "type": "module",

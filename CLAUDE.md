@@ -7,7 +7,7 @@ This file is for Claude Code working on **nightshift itself**, not on target pro
 A multi-agent development plugin on top of Claude Code + Codex CLI. It ships:
 - `core/` — platform-agnostic brain (event store, schemas, scripts, skills, templates)
 - `claude/` — Claude Code plugin (agents, commands, hooks)
-- `codex/` — Codex CLI plugin (skills, automations)
+- `codex/` — Codex CLI **adapter** (skill prompts + automations manifest; codex-cli has no plugin surface comparable to Claude Code — see codex/README.md)
 - `launchd/` — macOS agents for overnight safety
 
 The authoritative design is in `NIGHTSHIFT_MASTER_SPEC.md`. Read it before touching code.

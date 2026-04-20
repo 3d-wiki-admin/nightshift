@@ -74,7 +74,7 @@ See the [spec](./NIGHTSHIFT_MASTER_SPEC.md) for the full command catalog (§8), 
 nightshift/
 ├── core/              # platform-agnostic brain (event store, schemas, scripts, skills, templates)
 ├── claude/            # Claude Code plugin (agents, commands, hooks)
-├── codex/             # Codex CLI plugin
+├── codex/             # Codex CLI adapter (skill prompts + automations manifest — see codex/README.md)
 ├── launchd/           # macOS agents for overnight safety
 ├── scripts/           # top-level install and setup
 └── docs/              # architecture, agents, secrets, contributing
