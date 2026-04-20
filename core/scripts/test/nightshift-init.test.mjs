@@ -128,11 +128,8 @@ test('nightshift CLI init subcommand launches the init script and prints next-co
       encoding: 'utf8',
       env: {
         ...process.env,
-        HOME: path.dirname(registryRoot),
-        // Point Registry at our isolated root instead of ~/.nightshift.
-        // The Registry module falls back to ~/.nightshift/registry when we
-        // don't pass root; for isolation in this test we set HOME such that
-        // registryRoot sits at HOME/.nightshift/registry.
+        // Redirect Registry to an isolated tmp dir for this test.
+        NIGHTSHIFT_REGISTRY_ROOT: registryRoot,
         NIGHTSHIFT_AUTO_CHECKPOINT: '0'
       }
     });

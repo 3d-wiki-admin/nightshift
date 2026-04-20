@@ -24,12 +24,25 @@ export class RegistryError extends Error {
 const DEFAULT_ROOT = path.join(os.homedir(), '.nightshift', 'registry');
 const SCHEMA_VERSION = 1;
 
+// Resolve the registry root. Priority:
+//   1. Explicit constructor `{ root }` argument (tests pass this).
+//   2. NIGHTSHIFT_REGISTRY_ROOT env var (sandboxes + isolated shells
+//      redirect here instead of patching HOME).
+//   3. ~/.nightshift/registry (default).
+function resolveRoot(explicit) {
+  if (explicit) return explicit;
+  const env = process.env.NIGHTSHIFT_REGISTRY_ROOT;
+  if (env) return path.resolve(env);
+  return DEFAULT_ROOT;
+}
+
 export class Registry {
-  constructor({ root = DEFAULT_ROOT } = {}) {
-    this.root = root;
-    this.indexPath = path.join(root, 'index.json');
-    this.projectsDir = path.join(root, 'projects');
-    this.lockPath = path.join(root, '.lock');
+  constructor({ root } = {}) {
+    const r = resolveRoot(root);
+    this.root = r;
+    this.indexPath = path.join(r, 'index.json');
+    this.projectsDir = path.join(r, 'projects');
+    this.lockPath = path.join(r, '.lock');
   }
 
   async _ensureRoot() {
