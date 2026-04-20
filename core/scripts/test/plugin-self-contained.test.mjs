@@ -76,6 +76,33 @@ test('claude hooks resolve runtime via NIGHTSHIFT_RUNTIME_DIR or ${PLUGIN_ROOT}'
   assert.doesNotMatch(commonSh, /NIGHTSHIFT_HOME/, 'common.sh must NOT use NIGHTSHIFT_HOME (legacy)');
 });
 
+test('plugin hooks live in claude/hooks/hooks.json, NOT in claude/settings.json', async () => {
+  // Per the official Claude Code plugin spec (code.claude.com/docs/en/
+  // plugins-reference.md), a plugin's root settings.json supports ONLY
+  // `agent` and `subagentStatusLine`. Hooks belong in `hooks/hooks.json`
+  // at the plugin root (or inline in .claude-plugin/plugin.json). The
+  // earlier layout had hooks under settings.json, where they were
+  // silently ignored by the installed plugin.
+  const settingsPath = path.join(ROOT, 'claude', 'settings.json');
+  const hooksPath = path.join(ROOT, 'claude', 'hooks', 'hooks.json');
+
+  const settingsRaw = await fs.readFile(settingsPath, 'utf8');
+  const settings = JSON.parse(settingsRaw);
+  assert.ok(
+    !('hooks' in settings),
+    `claude/settings.json must NOT contain a "hooks" key (plugin spec ignores it). Move hooks to claude/hooks/hooks.json.`
+  );
+
+  const hooksRaw = await fs.readFile(hooksPath, 'utf8');
+  const hooks = JSON.parse(hooksRaw);
+  for (const event of ['SessionStart', 'PreToolUse', 'PostToolUse', 'Stop']) {
+    assert.ok(
+      Array.isArray(hooks[event]) && hooks[event].length > 0,
+      `claude/hooks/hooks.json must define at least one ${event} hook`
+    );
+  }
+});
+
 test('prepare-claude-plugin-runtime.sh produces a MANIFEST.json when runtime is built', async () => {
   const manifest = path.join(ROOT, 'claude', 'bin', 'runtime', 'MANIFEST.json');
   // The runtime is gitignored; presence depends on prepare having been run.

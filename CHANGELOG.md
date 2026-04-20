@@ -59,6 +59,15 @@ running" only on the developer's own Mac.
   agents via `launchctl list`; non-Darwin produces a clear "macOS-only"
   message instead of silently exiting. Regression test:
   `core/scripts/test/fixbatch-nightshift-launchd-cli.test.mjs`.
+- `claude/hooks/hooks.json` — plugin hooks relocated from
+  `claude/settings.json` per the official Claude Code plugin spec
+  (`code.claude.com/docs/en/plugins-reference.md`): a plugin's root
+  `settings.json` supports only `agent` / `subagentStatusLine`, so
+  hooks defined there were silently ignored in installed plugin
+  sessions. `claude/settings.json` is now `{}`. Regression guard in
+  `core/scripts/test/plugin-self-contained.test.mjs` asserts the
+  `hooks` key is absent from `settings.json` and that every lifecycle
+  event has at least one entry in `hooks/hooks.json`.
 
 ### Changed — Fix-B (P1, UX sync)
 
@@ -76,7 +85,7 @@ running" only on the developer's own Mac.
   recovery behavior.
 
 ### Notes
-- Total tests after fix-batch: 239 (Darwin). On non-Darwin the
+- Total tests after fix-batch: 240 (Darwin). On non-Darwin the
   install-launchd suite now skips 2 tests instead of failing them,
   so the delta between platforms is finite and deliberate.
 - Live-run gaps carried over from v1.1 (Claude plugin install on the
