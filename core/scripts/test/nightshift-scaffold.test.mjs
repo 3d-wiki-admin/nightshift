@@ -102,9 +102,13 @@ test('scaffold with approved proposal creates memory/constitution.md and tasks/s
     assert.match(spec, /Sync in realtime/);
     assert.match(spec, /banana/);
 
-    // Template files (from project-starter) copied.
-    const pkg = await fs.readFile(path.join(project, 'package.json'), 'utf8');
-    assert.match(pkg, /nightshift-project-starter/);
+    // package.json is now rendered from the proposal (hotfix H8) — the
+    // project basename appears as the package name, not the old template
+    // literal `nightshift-project-starter`.
+    const pkg = JSON.parse(await fs.readFile(path.join(project, 'package.json'), 'utf8'));
+    assert.equal(pkg.name, path.basename(project));
+    assert.match(pkg.dependencies?.next || '', /^\^15\./,
+      'Next.js dependency should still appear for a next-supabase-vercel stack');
 
     await fs.rm(project, { recursive: true, force: true });
   });
@@ -153,7 +157,10 @@ test('scaffold seeds retrieval memory surface (decisions/incidents/services/reus
     const project = tmp();
     await init(project, { registryRoot });
     await appendIntake(project, [
-      { kind: 'proposal', stack: 'x', template: 'next-supabase-vercel', providers: [], initial_risk_class: 'safe', approved: true }
+      // Stack that contains both "nextjs" and "supabase" — exercises the
+      // Supabase reuse-index seeding branch (hotfix H8 made this conditional
+      // on the proposal, not hard-coded for every project).
+      { kind: 'proposal', stack: 'nextjs-supabase', template: 'next-supabase-vercel', providers: ['supabase', 'vercel'], initial_risk_class: 'safe', approved: true }
     ]);
     await scaffold(project, { registryRoot });
 
@@ -170,9 +177,27 @@ test('scaffold seeds retrieval memory surface (decisions/incidents/services/reus
 
     const reuse = JSON.parse(await fs.readFile(path.join(project, 'memory', 'reuse-index.json'), 'utf8'));
     assert.equal(reuse.schema_version, 1);
-    // Seeded entries for supabase helpers from the template.
-    assert.ok(reuse.entries.some(e => e.file.includes('lib/supabase/server.ts')));
-    assert.ok(reuse.entries.some(e => e.file.includes('lib/supabase/client.ts')));
+    // Seeded entries for supabase helpers when the stack includes Next + Supabase.
+    assert.ok(reuse.entries.some(e => /supabase\/server\.ts/.test(e.file)));
+    assert.ok(reuse.entries.some(e => /supabase\/client\.ts/.test(e.file)));
+
+    await fs.rm(project, { recursive: true, force: true });
+  });
+});
+
+test('scaffold seeds an empty reuse-index when the stack has no Supabase helpers to reuse', async () => {
+  await withIsolatedRegistry(async (registryRoot) => {
+    const project = tmp();
+    await init(project, { registryRoot });
+    await appendIntake(project, [
+      { kind: 'proposal', stack: 'python-fastapi-celery-redis-postgres', template: 'api-worker', providers: ['railway', 'upstash-redis'], initial_risk_class: 'safe', approved: true }
+    ]);
+    await scaffold(project, { registryRoot });
+
+    const reuse = JSON.parse(await fs.readFile(path.join(project, 'memory', 'reuse-index.json'), 'utf8'));
+    assert.equal(reuse.schema_version, 1);
+    assert.deepEqual(reuse.entries, [],
+      'pure-Python stacks must not inherit the Next.js+Supabase reuse seed');
 
     await fs.rm(project, { recursive: true, force: true });
   });

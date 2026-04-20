@@ -170,17 +170,45 @@ Next.js+Supabase, игнорируя Python-требования.
 - Регрессионный тест `core/scripts/test/hotfix-dynamic-stack-block.test.mjs` — два кейса:
   Python/FastAPI/Celery и Next.js/Supabase — оба дают корректный Stack блок.
 
-### Что ещё потенциально врёт (в hotfix H8 следующим шагом)
-- `CLAUDE.md` в template'е говорит `pnpm dev / pnpm typecheck / pnpm build` — хардкод
-  Node/pnpm стека. Для Python проекта это мусор. Нужен тот же паттерн динамической
-  генерации.
-- `README.md` template'а описывает «Next.js 15 + Supabase» — см. выше.
-- `package.json`, `next.config.mjs`, `tsconfig.json`, `middleware.ts`, `app/`, `lib/` —
-  копируются всегда, даже если стек Python. Для polyglot monorepo нужен либо
-  multi-template scaffold (`api-worker/`, `python-fastapi/`, `go/`, …), либо шаблон
-  должен стать «только мета + memory/tasks», а конкретные рантайм-файлы проекта
-  появляться в процессе первой волны (`task.contracted → implementer создаёт каркас`).
-  Второй путь чище и ближе к нашей философии «код появляется через контракт».
+### Что ещё потенциально врёт (в hotfix H8 следующим шагом) ← **сделано**
+- ~~`CLAUDE.md` в template'е говорит `pnpm dev / pnpm typecheck / pnpm build` — хардкод~~
+  → `renderClaudeMd(flags, name)` строит Commands секцию: poetry-блок если Python
+  в стеке, pnpm-блок если Next. Монорепо префиксует `cd apps/<api|worker>` и
+  `pnpm -C apps/web`.
+- ~~`README.md` template'а описывает «Next.js 15 + Supabase»~~ → `renderReadme(flags, name)`
+  генерирует Stack секцию из флагов + Setup блок с нужными командами установки.
+- ~~`package.json`, `next.config.mjs`, `tsconfig.json`, `middleware.ts`, `app/`, `lib/` —
+  копируются всегда, даже если стек Python.~~ → `renderPackageJson(flags, name)`
+  возвращает workspace-root для монорепо, классический Next-package для Next-only,
+  `null` для pure-Python (файл вообще не пишется). Next-specific файлы (`app/`,
+  `lib/`, `next.config.mjs`, `middleware.ts`, `tsconfig.json`) попадают в `excludeRel`
+  если `hasNext=false` и не копируются вообще.
+
+Полный список рендеров:
+- `renderEnvTemplate(flags)` — секции Supabase / LLM / Storage+Queue / Google / Deploy
+  включаются по флагам.
+- `renderGitignore(flags)` — JS блок если hasNext, Python блок если hasPython.
+- `renderClaudeMd(flags, name)` — dual-stack Commands.
+- `renderCi(flags)` — jobs web / api / worker / smoke появляются по флагам, smoke
+  `needs: [...]` собирается динамически.
+- `renderSmokeSh(flags)` — один или два компонента в зависимости от FastAPI/Next.
+- `renderPackageJson(flags, name)` — workspace-root | Next-app | `null`.
+- `renderPnpmWorkspace(flags)` — только для монорепо.
+- `renderReadme(flags, name)` — Stack секция + Setup команды.
+- `renderProjectStructure(flags, name)` — монорепо vs плоский layout.
+- `renderApiContracts(flags)` — FastAPI/Pydantic секция + Next/Zod секция + Shared Types
+  пункт для монорепо.
+- `renderTaskTemplate(flags)` — verification_plan.commands варианты JS+Python,
+  forbidden_files подбираются по флагам, gates_required соответствует стеку.
+- `renderReviewDimensions(flags)` — missed_deps evidence `pnpm audit | poetry show --outdated`
+  с пометкой «both stacks» для монорепо.
+- `renderReuseFunctionsMd(flags)` + `renderReuseIndexEntries(flags)` — пути Supabase
+  хелперов корректны под монорепо (`apps/web/lib/supabase/...`) или плоский layout.
+- `renderPlanPlaceholder(flags, name)` + `renderDataModel(flags, name)` — пустые placeholder'ы
+  с уже корректными JS/Python библиотеками + RLS секция только если Supabase в стеке.
+
+Регрессионный тест: `core/scripts/test/hotfix-dynamic-scaffold-surface.test.mjs` —
+9 сценариев (монорепо, Python-only, Next-only), пинят каждый render output.
 
 ## Priority
 - **H1** (namespace split) — P0, блокирует первый live-запуск без шпаргалки
