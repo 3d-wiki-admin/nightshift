@@ -3,12 +3,7 @@
 > The non-negotiable rules for this project. Every agent reads this before acting. Violations are logged as CRITICAL events.
 > Edit this file carefully. Changes mid-project require re-running `/analyze`.
 
-## 1. Stack
-- Frontend: Next.js 15 (App Router) + TypeScript strict + Tailwind CSS.
-- Backend: Supabase (Postgres + RLS + Auth + Storage).
-- Deploy: Vercel.
-- Package manager: pnpm 10+.
-- Node: 22+.
+<!-- nightshift:stack-block — scaffold injects Stack section here from intake proposal. Do not remove this marker. -->
 
 ## 2. Forbidden
 - Secrets in the repo (including `.env.local`). Use `.env.template` with `{{SECRET:KEY}}` placeholders.

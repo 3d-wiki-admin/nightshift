@@ -106,6 +106,33 @@ async function copyTree(srcDir, dstDir, { substitutions = {}, excludeRel = [] } 
   return { copied, skipped };
 }
 
+// Build a `## 1. Stack` block from the approved proposal. Until this fix
+// the constitution template hard-coded Next.js+Supabase+Vercel — which lied
+// to /plan whenever intake picked a different stack (Python+FastAPI+Celery,
+// Go, Rails, whatever). The block now reflects what the intake actually
+// decided.
+function renderStackBlock(proposal) {
+  const stack = (proposal.stack || '').trim();
+  const providers = Array.isArray(proposal.providers) ? proposal.providers : [];
+  const template = proposal.template || '(unset)';
+  const stackLines = stack
+    ? stack.split(/[-,+ /]+/).filter(Boolean).map(s => `- ${s}`)
+    : ['- _(stack unset — intake proposal did not pin a stack)_'];
+  return [
+    '## 1. Stack',
+    `- Template: \`${template}\``,
+    `- Stack identifier: \`${stack || '(unset)'}\``,
+    ...(providers.length ? ['- Providers:', ...providers.map(p => `  - ${p}`)] : ['- Providers: _(none pinned at intake)_']),
+    '- Components (from stack identifier — confirm each during /plan):',
+    ...stackLines.map(l => `  ${l}`),
+    '',
+    '> This Stack section is generated from the intake proposal. If the plan reveals',
+    '> a component was wrong, open an `approval-required` task to change it — do not',
+    '> silently edit this block.',
+    ''
+  ].join('\n');
+}
+
 // Build memory/constitution.md by applying the approved proposal to the
 // template. Inserts stack, forbidden items, risk class, etc.
 async function renderConstitution(project, proposal) {
@@ -115,6 +142,16 @@ async function renderConstitution(project, proposal) {
   catch { return null; }
 
   text = text.replaceAll('<project>', path.basename(project));
+  // Substitute the stack-block marker with a concrete stack section built
+  // from the intake proposal. If the marker isn't found (older template)
+  // we prepend the stack block above `## 2.` as a fallback.
+  const stackBlock = renderStackBlock(proposal);
+  const markerRe = /<!--\s*nightshift:stack-block[^>]*-->\s*/;
+  if (markerRe.test(text)) {
+    text = text.replace(markerRe, stackBlock);
+  } else {
+    text = text.replace(/^## 2\. /m, `${stackBlock}\n## 2. `);
+  }
   // Append an intake snapshot so /plan can read it as first-class input.
   const snapshot = [
     '',
