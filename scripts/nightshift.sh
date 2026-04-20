@@ -177,6 +177,17 @@ case "$sub" in
     exec node "$root/core/scripts/intake-record.mjs" "$@"
     ;;
 
+  memory-record)
+    # Wave C — append to retrieval memory (decisions/incidents/services/
+    # reuse-index). Agents call this instead of writing the files directly.
+    exec node "$root/core/scripts/memory-record.mjs" "$@"
+    ;;
+
+  memory-retrieve)
+    # Wave C — dump relevant memory slices for context-pack inclusion.
+    exec node "$root/core/scripts/memory-retrieve.mjs" "$@"
+    ;;
+
   scaffold)
     # Internal: called by /nightshift confirm-scaffold after the intake
     # interview is approved. Expands the minimal meta into a full project.

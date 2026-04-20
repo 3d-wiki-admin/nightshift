@@ -148,6 +148,36 @@ test('scaffold flips registry stage from intake to ready', async () => {
   });
 });
 
+test('scaffold seeds retrieval memory surface (decisions/incidents/services/reuse-index)', async () => {
+  await withIsolatedRegistry(async (registryRoot) => {
+    const project = tmp();
+    await init(project, { registryRoot });
+    await appendIntake(project, [
+      { kind: 'proposal', stack: 'x', template: 'next-supabase-vercel', providers: [], initial_risk_class: 'safe', approved: true }
+    ]);
+    await scaffold(project, { registryRoot });
+
+    // ndjson files exist (possibly empty).
+    const decisions = await fs.readFile(path.join(project, 'memory', 'decisions.ndjson'), 'utf8');
+    const incidents = await fs.readFile(path.join(project, 'memory', 'incidents.ndjson'), 'utf8');
+    assert.equal(typeof decisions, 'string');
+    assert.equal(typeof incidents, 'string');
+
+    // services.json and reuse-index.json have schema_version=1.
+    const services = JSON.parse(await fs.readFile(path.join(project, 'memory', 'services.json'), 'utf8'));
+    assert.equal(services.schema_version, 1);
+    assert.deepEqual(services.providers, {});
+
+    const reuse = JSON.parse(await fs.readFile(path.join(project, 'memory', 'reuse-index.json'), 'utf8'));
+    assert.equal(reuse.schema_version, 1);
+    // Seeded entries for supabase helpers from the template.
+    assert.ok(reuse.entries.some(e => e.file.includes('lib/supabase/server.ts')));
+    assert.ok(reuse.entries.some(e => e.file.includes('lib/supabase/client.ts')));
+
+    await fs.rm(project, { recursive: true, force: true });
+  });
+});
+
 test('scaffold renames intake-pending → intake-complete marker', async () => {
   await withIsolatedRegistry(async (registryRoot) => {
     const project = tmp();

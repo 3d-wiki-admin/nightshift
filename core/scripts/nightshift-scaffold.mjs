@@ -219,6 +219,34 @@ export async function scaffold(project, {
   const con = await renderConstitution(abs, proposal);
   const spec = await renderSpec(abs, proposal, questions);
 
+  // Wave C — seed the retrieval-memory surface. ndjson files start empty;
+  // JSON stores get a schema_version=1 header so readers never see "missing".
+  await fs.mkdir(path.join(abs, 'memory'), { recursive: true });
+  for (const f of ['decisions.ndjson', 'incidents.ndjson']) {
+    const p = path.join(abs, 'memory', f);
+    if (!await pathExists(p)) await fs.writeFile(p, '', 'utf8');
+  }
+  const servicesPath = path.join(abs, 'memory', 'services.json');
+  if (!await pathExists(servicesPath)) {
+    await fs.writeFile(servicesPath, JSON.stringify({
+      schema_version: 1,
+      updated_at: new Date().toISOString(),
+      providers: {}
+    }, null, 2) + '\n', 'utf8');
+  }
+  const reuseIndexPath = path.join(abs, 'memory', 'reuse-index.json');
+  if (!await pathExists(reuseIndexPath)) {
+    const seededReuse = [
+      { file: 'lib/supabase/server.ts', symbol: 'supabaseServer', purpose: 'Server-side Supabase client (SSR cookies)', tags: ['supabase', 'ssr'], safe_to_extend: true, examples: [] },
+      { file: 'lib/supabase/client.ts', symbol: 'supabaseBrowser', purpose: 'Browser-side Supabase client (singleton)', tags: ['supabase', 'browser'], safe_to_extend: true, examples: [] }
+    ];
+    await fs.writeFile(reuseIndexPath, JSON.stringify({
+      schema_version: 1,
+      updated_at: new Date().toISOString(),
+      entries: seededReuse
+    }, null, 2) + '\n', 'utf8');
+  }
+
   // Emit decision.recorded for the approval (single entry, atomic).
   const logPath = path.join(abs, 'tasks', 'events.ndjson');
   const reg = new Registry(registryRoot ? { root: registryRoot } : {});
