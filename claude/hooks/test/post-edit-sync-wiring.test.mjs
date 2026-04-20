@@ -76,7 +76,7 @@ function runHook(project, filePath) {
       tool_input: { file_path: filePath }
     }),
     encoding: 'utf8',
-    env: { ...process.env, NIGHTSHIFT_HOME: ROOT, NIGHTSHIFT_AUTO_CHECKPOINT: '0' }
+    env: { ...process.env, NIGHTSHIFT_AUTO_CHECKPOINT: '0' }
   });
 }
 

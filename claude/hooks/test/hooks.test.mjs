@@ -51,10 +51,12 @@ async function setupActiveTask(project, taskId, allowedFiles) {
 }
 
 function runHook(hook, eventPayload) {
+  // Hooks now derive PLUGIN_ROOT and NIGHTSHIFT_RUNTIME_DIR from their own
+  // file path, no env override needed.
   return spawnSync('bash', [path.join(HOOKS, hook)], {
     input: JSON.stringify(eventPayload),
     encoding: 'utf8',
-    env: { ...process.env, NIGHTSHIFT_HOME: ROOT }
+    env: { ...process.env }
   });
 }
 
