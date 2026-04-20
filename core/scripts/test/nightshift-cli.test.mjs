@@ -68,10 +68,10 @@ test('nightshift unknown subcommand exits 2 with a clear error', () => {
   assert.match(res.stderr, /unknown subcommand/);
 });
 
-test('nightshift init is scheduled (Wave B) — clear error, exit 2', () => {
-  const res = run(['init', '/tmp/does-not-matter']);
+test('nightshift init without a path exits 2 with usage error', () => {
+  const res = run(['init']);
   assert.equal(res.status, 2);
-  assert.match(res.stderr, /Wave B/i);
+  assert.match(res.stderr, /usage: nightshift init/);
 });
 
 test('nightshift works when invoked through a symlink (as --link-bin installs it)', async () => {

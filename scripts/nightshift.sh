@@ -128,6 +128,8 @@ case "$sub" in
   doctor)                      cmd_doctor "$@" ;;
   prepare-plugin)              exec bash "$root/scripts/prepare-claude-plugin-runtime.sh" "$@" ;;
 
+  # Wave B — intake / scaffold / intake-record are defined just above.
+
   # Runtime passthroughs (Node scripts)
   dispatch)                    exec node "$root/core/scripts/dispatch.mjs" "$@" ;;
   replay)                      exec node "$root/core/scripts/replay-events.mjs" "$@" ;;
@@ -150,9 +152,40 @@ case "$sub" in
   run-with-secrets)            exec bash "$root/core/scripts/run-with-secrets.sh" "$@" ;;
   snapshot)                    exec bash "$root/core/scripts/snapshot.sh" "$@" ;;
 
-  # Wave B placeholders
+  # Wave B: idea-first project intake
   init|new)
-    die "'$sub' is scheduled for Wave B. For now: mkdir + cd + 'claude' + '/plugin install <repo>/claude' + '/bootstrap'"
+    project_path="${1:-}"
+    shift || true
+    if [ -z "$project_path" ]; then
+      die "usage: nightshift init <project-path> [--force]"
+    fi
+    # Delegate to nightshift-init.mjs (writes minimal meta + registers project).
+    # Preserve --force and friends as passthrough args.
+    node "$root/core/scripts/nightshift-init.mjs" "$project_path" "$@" || {
+      rc=$?
+      exit $rc
+    }
+    # Remind the user of the single next command. Launching claude
+    # automatically from this script is an intentional non-goal: the user
+    # may want to `cd` and inspect the meta before starting the interview.
+    ;;
+
+  intake-record)
+    # Used by the intake-interview Claude subagent to append structured
+    # records to <project>/.nightshift/intake.ndjson without reconstructing
+    # the schema each turn.
+    exec node "$root/core/scripts/intake-record.mjs" "$@"
+    ;;
+
+  scaffold)
+    # Internal: called by /nightshift confirm-scaffold after the intake
+    # interview is approved. Expands the minimal meta into a full project.
+    project_path="${1:-}"
+    shift || true
+    if [ -z "$project_path" ]; then
+      die "usage: nightshift scaffold <project-path>"
+    fi
+    node "$root/core/scripts/nightshift-scaffold.mjs" "$project_path" "$@"
     ;;
 
   *) die "unknown subcommand '$sub'. Try: nightshift --help" ;;
