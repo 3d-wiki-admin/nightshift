@@ -8,7 +8,7 @@ Invoke the `orchestrator` subagent via the Task tool to run the wave.
 Before dispatch:
 1. Run `/preflight` equivalent checks (constitution present, events log writable, git tree clean or at least committed).
 2. Confirm the wave's manifest validates against `core/schemas/manifest.schema.json`.
-3. Tag a pre-wave checkpoint: `bash core/scripts/checkpoint-manager.sh tag wave-<N>-start`.
+3. Tag a pre-wave checkpoint: `nightshift checkpoint tag wave-<N>-start`.
 
 The orchestrator will:
 - Run each task's context-packer → implementer → task-impl-reviewer chain.

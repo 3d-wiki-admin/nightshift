@@ -20,13 +20,13 @@ Pre-checks:
 
 Then shell out:
 ```bash
-node ${NIGHTSHIFT_HOME:-~/.nightshift}/core/scripts/provision.mjs $ARGUMENTS
+nightshift provision $ARGUMENTS
 ```
 
 Without `--execute`, the adapter runs in DRY-RUN and emits `infra.provisioned` with `dry_run: true`. With `--execute`, real CLI calls happen and secrets land in the active SecretBackend. Plaintext secret values NEVER appear in chat, events, result.md, or logs.
 
 Post-action:
-- Run `node core/scripts/infra-audit.mjs .` to refresh `tasks/infra-audit.ndjson`.
+- Run `nightshift infra-audit .` to refresh `tasks/infra-audit.ndjson`.
 - Print what was created/rotated (IDs and refs — no secret values).
 - Print recommended follow-up: consumers to update (Vercel env, GH Actions secrets), grace period before old-key revoke (default 24h).
 

@@ -7,7 +7,7 @@ Regenerate + display compliance.md.
 
 Steps:
 
-1. `node ${NIGHTSHIFT_HOME:-~/.nightshift}/core/scripts/compliance-reporter.mjs "$PWD"`
+1. `nightshift compliance "$PWD"`
 2. Print `tasks/compliance.md`:
    - If $ARGUMENTS is `wave <N>`: print only that wave's section.
    - Otherwise: print the full file.

@@ -18,20 +18,20 @@ The calling task MUST be `approval-required` and have a matching `decision.recor
 ### 1. WebFetch docs
 Shell out:
 ```bash
-node core/scripts/provision.mjs docs <service>
+nightshift provision docs <service>
 ```
 Take the returned URL and `WebFetch` it. Record the URL + a 3-line summary in `result.md`. This is non-negotiable.
 
 ### 2. Preflight
 ```bash
-node core/scripts/provision.mjs <service> ...    # no --execute yet
+nightshift provision <service> ...    # no --execute yet
 ```
 This runs `preflight()` + DRY-RUN. Surface any missing CLI / auth to the user.
 
 ### 3. Execute
 Only after the user has seen the dry-run output and confirmed:
 ```bash
-node core/scripts/provision.mjs <service> ... --execute
+nightshift provision <service> ... --execute
 ```
 
 ### 4. Update consumers

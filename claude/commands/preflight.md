@@ -5,7 +5,7 @@ description: Pre-sleep readiness validator. Checks constitution, spec, git clean
 Run preflight:
 
 ```bash
-bash ${NIGHTSHIFT_HOME:-~/.nightshift}/core/scripts/preflight.sh "$PWD"
+nightshift preflight "$PWD"
 ```
 
 Interpret the exit code:

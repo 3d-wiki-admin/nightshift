@@ -11,8 +11,8 @@ tools: Read, Write, Edit, Bash, Grep, Glob
 Follow `core/skills/post-task-sync/SKILL.md`.
 
 ## Order (strict)
-1. `node core/scripts/replay-events.mjs tasks/events.ndjson --write` → rebuilds `tasks/state.json`.
-2. `node core/scripts/compliance-reporter.mjs .` → regenerates `tasks/compliance.md`.
+1. `nightshift replay tasks/events.ndjson --write` → rebuilds `tasks/state.json`.
+2. `nightshift compliance .` → regenerates `tasks/compliance.md`.
 3. Update `tasks/contracts/FEATURE_INDEX.md` — append one row per accepted task (from the diff just accepted).
 4. Update `tasks/contracts/REUSE_FUNCTIONS.md` — append each newly exported function ≥10 LOC.
 5. Update `tasks/contracts/PROJECT_STRUCTURE.md` only if top-level folders changed.

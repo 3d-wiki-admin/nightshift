@@ -10,7 +10,7 @@ project="$(ns_project_dir)"
 log="$project/tasks/events.ndjson"
 state="$project/tasks/state.json"
 [ -f "$log" ] || { ns_allow; }
-[ -f "$state" ] || { node "$NIGHTSHIFT_HOME/core/scripts/replay-events.mjs" "$log" --write >/dev/null 2>&1 || true; }
+[ -f "$state" ] || { node "$NIGHTSHIFT_RUNTIME_DIR/scripts/replay-events.mjs" "$log" --write >/dev/null 2>&1 || true; }
 
 if [ ! -f "$state" ]; then
   ns_allow

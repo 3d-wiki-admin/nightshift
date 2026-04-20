@@ -21,8 +21,8 @@ Flow:
    - Infer `allowed_files` from the description (best-effort). If unclear, stop and ask.
    - `verification_plan.commands`: `pnpm typecheck && pnpm lint && pnpm test`.
 2. **Invoke `task-spec-reviewer`** (≤3 min) to validate the mini-contract.
-3. **Route via `node core/scripts/router.mjs`**. For trivial edits, expect `gpt-5.3-codex-spark`.
-4. **Dispatch implementer** (`node core/scripts/dispatch.mjs codex <task.json>`, or Claude Sonnet fallback).
+3. **Route via `nightshift router`**. For trivial edits, expect `gpt-5.3-codex-spark`.
+4. **Dispatch implementer** (`nightshift dispatch codex <task.json>`, or Claude Sonnet fallback).
 5. **Invoke `task-impl-reviewer`** — hard gates + dimension review.
 6. **On accept**: tag a checkpoint `micro-<timestamp>`, run doc-syncer, merge to main (or leave branch if user prefers). Print one-line summary.
 

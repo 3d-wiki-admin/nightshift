@@ -5,7 +5,7 @@ description: Resume interrupted work — replays events → state.json and re-en
 Resume the most recent session.
 
 Steps:
-1. Run `node core/scripts/replay-events.mjs tasks/events.ndjson --write` to refresh `state.json`.
+1. Run `nightshift replay tasks/events.ndjson --write` to refresh `state.json`.
 2. Inspect state.json:
    - If no session is open (last event was `session.end` / `session.halted` before any new work), print "no in-flight session to resume" and stop.
    - Otherwise find the most recent wave with status `in_progress` and its tasks with status ∈ {`dispatched`, `blocked`, `reviewing`, `context_packed`}.

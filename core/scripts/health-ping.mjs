@@ -93,9 +93,13 @@ async function main() {
 }
 
 async function attemptUnstick(projectDir) {
+  // claude CLI does not have a --project flag; it uses cwd for project
+  // context. For a headless "run /resume in that project" we spawn claude
+  // with cwd set to the project and the -p (print) flag.
   const cli = process.env.NIGHTSHIFT_CLAUDE_CMD || 'claude';
   return await new Promise((resolve) => {
-    const child = spawn(cli, ['--project', projectDir, '-p', '/resume'], {
+    const child = spawn(cli, ['-p', '/resume'], {
+      cwd: projectDir,
       stdio: 'ignore',
       detached: false
     });

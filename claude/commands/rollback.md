@@ -13,7 +13,7 @@ Safety:
 1. Refuse if git tree is dirty — tell the user to commit / stash first.
 2. Refuse if the tag is not under `nightshift/` prefix.
 3. Confirm with the user: "About to `git reset --hard` to `<tag>`. This affects code only; events.ndjson is untouched. Proceed?"
-4. Only on explicit confirmation: run `core/scripts/checkpoint-manager.sh rollback <full-tag>`.
+4. Only on explicit confirmation: run `nightshift checkpoint rollback <full-tag>`.
 
 After rollback:
 - Emit `rollback.performed` with `{tag, wave}`.

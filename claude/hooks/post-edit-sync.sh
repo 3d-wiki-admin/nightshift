@@ -39,10 +39,10 @@ date +%s >"$marker"
 
 # Fire-and-forget sync (replay + compliance + doc indices on task.accepted).
 (
-  node "$NIGHTSHIFT_HOME/core/scripts/replay-events.mjs" "$log" --write >/dev/null 2>&1 || true
-  node "$NIGHTSHIFT_HOME/core/scripts/compliance-reporter.mjs" "$project" >/dev/null 2>&1 || true
+  node "$NIGHTSHIFT_RUNTIME_DIR/scripts/replay-events.mjs" "$log" --write >/dev/null 2>&1 || true
+  node "$NIGHTSHIFT_RUNTIME_DIR/scripts/compliance-reporter.mjs" "$project" >/dev/null 2>&1 || true
   if [ "$last_action" = "task.accepted" ]; then
-    node "$NIGHTSHIFT_HOME/core/scripts/post-sync-docs.mjs" "$project" >/dev/null 2>&1 || true
+    node "$NIGHTSHIFT_RUNTIME_DIR/scripts/post-sync-docs.mjs" "$project" >/dev/null 2>&1 || true
   fi
 ) &
 disown 2>/dev/null || true

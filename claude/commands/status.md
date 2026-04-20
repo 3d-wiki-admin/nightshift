@@ -5,10 +5,8 @@ description: ASCII dashboard of wave/task state + token ledger + top-cost tasks.
 Run the project-status script directly (no subagent — this is pure display):
 
 ```bash
-node ~/.nightshift/core/scripts/project-status.mjs "$PWD"
+nightshift status "$PWD"
 ```
-
-(If `$NIGHTSHIFT_HOME` is set, use `$NIGHTSHIFT_HOME/core/scripts/project-status.mjs` instead.)
 
 After the ASCII dashboard, print:
 - Top 10 most expensive tasks this session (sourced from state.json `tokens` per task).

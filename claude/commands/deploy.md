@@ -14,7 +14,7 @@ Deploy the current project. This command does NOT bypass the approval gate — e
 
 ## Flow
 
-1. **Preflight.** Run `bash core/scripts/preflight.sh "$PWD"`. Exit code must be 0 or 2 (warn). Refuse on 1 (halt).
+1. **Preflight.** Run `nightshift preflight "$PWD"`. Exit code must be 0 or 2 (warn). Refuse on 1 (halt).
 2. **Resolve target.** Determine the deploy task_id for this wave. Usually the last-in-manifest task with `approval-required`.
 3. **Verify decision.** Grep the log:
    ```

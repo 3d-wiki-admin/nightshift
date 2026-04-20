@@ -15,8 +15,15 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { EventStore } from '../event-store/src/index.mjs';
+import {
+  runCodex,
+  buildTaskEnv,
+  CodexError,
+  codexAvailable as clientCodexAvailable,
+  EXIT_CODEX_UNAVAILABLE as CLIENT_EXIT_CODEX_UNAVAILABLE
+} from '../codex/client.mjs';
 
 const COSTS_PATH = new URL('../schemas/costs.json', import.meta.url);
 
@@ -117,16 +124,14 @@ async function cmdQuote(args) {
   process.stdout.write(JSON.stringify({ model: args.model, tokens, cost_usd_estimate: cost }) + '\n');
 }
 
-// Detect `codex` CLI availability on PATH. Extracted so tests can stub it.
-export function codexAvailable() {
-  const res = spawnSync('bash', ['-lc', 'command -v codex'], { encoding: 'utf8' });
-  return res.status === 0 && res.stdout.trim().length > 0;
-}
+// Detect `codex` CLI availability on PATH. Re-exported from the hardened
+// client so existing tests (and the dispatch CLI) keep a single import.
+export const codexAvailable = clientCodexAvailable;
 
 // Exit code used when dispatch cannot reach Codex and the caller must fall
 // back (spec §23 degraded mode). Orchestrator treats this as "route to Claude
 // implementer", not as a generic failure.
-export const EXIT_CODEX_UNAVAILABLE = 5;
+export const EXIT_CODEX_UNAVAILABLE = CLIENT_EXIT_CODEX_UNAVAILABLE;
 
 async function cmdCodex(args) {
   const taskPath = args.taskFile;
@@ -137,6 +142,7 @@ async function cmdCodex(args) {
   const model = task.target_model;
   const effort = task.reasoning_effort || 'default';
 
+  // Reviewer ≠ implementer gate first.
   const [ok, reason] = assertReviewerNotImplementer(model, task.reviewer_model);
   if (!ok) {
     await appendEvent(logPath, {
@@ -150,10 +156,7 @@ async function cmdCodex(args) {
     throw new Error(`[dispatch] refusing to dispatch: ${reason}`);
   }
 
-  // §23 degraded mode: if Codex CLI isn't on PATH, record the fallback and
-  // exit with EXIT_CODEX_UNAVAILABLE so the orchestrator can route to the
-  // Claude Sonnet implementer instead. We still emit task.routed with the
-  // fallback model so the log is self-describing.
+  // §23 degraded mode: if Codex CLI isn't on PATH, record fallback + exit 5.
   if (!codexAvailable()) {
     await appendEvent(logPath, {
       session_id: task.session_id,
@@ -172,6 +175,35 @@ async function cmdCodex(args) {
     process.exit(EXIT_CODEX_UNAVAILABLE);
   }
 
+  // Build NIGHTSHIFT_* env block BEFORE spawn so implementer skills see
+  // their declared inputs. buildTaskEnv throws CodexError on missing
+  // contract/constitution; surface the reason and exit non-zero.
+  let taskEnv;
+  try {
+    taskEnv = await buildTaskEnv({
+      task_id: task.task_id,
+      wave: task.wave,
+      project_dir: task.project_dir || (args.log ? path.dirname(path.dirname(path.resolve(args.log))) : process.cwd()),
+      contract_path: task.contract_path,
+      context_pack_path: task.context_pack_path,
+      constitution_path: task.constitution_path
+    });
+  } catch (err) {
+    if (err instanceof CodexError) {
+      await appendEvent(logPath, {
+        session_id: task.session_id,
+        wave: task.wave,
+        task_id: task.task_id,
+        agent: 'system',
+        action: 'guard.violation',
+        payload: { kind: 'codex_env_unresolvable', reason: err.message }
+      });
+      console.error(`[dispatch] ${err.message}`);
+      process.exit(4);
+    }
+    throw err;
+  }
+
   await appendEvent(logPath, {
     session_id: task.session_id,
     wave: task.wave,
@@ -181,7 +213,6 @@ async function cmdCodex(args) {
     payload: { model, effort, reason: task.route_reason || 'default route' }
   });
 
-  const started = Date.now();
   await appendEvent(logPath, {
     session_id: task.session_id,
     wave: task.wave,
@@ -191,27 +222,19 @@ async function cmdCodex(args) {
     action: 'task.dispatched'
   });
 
-  const codexArgs = [
-    'exec',
-    '--json',
-    '--model', model,
-    ...(effort !== 'default' ? ['--reasoning-effort', effort] : []),
-    '--prompt', task.prompt_path || `${path.dirname(taskPath)}/prompt.md`
-  ];
+  const promptPath = task.prompt_path || `${path.dirname(taskPath)}/prompt.md`;
 
-  const child = spawn('codex', codexArgs, { stdio: ['inherit', 'pipe', 'pipe'] });
-  let stdout = '';
-  let stderr = '';
-  child.stdout.on('data', d => { stdout += d.toString(); process.stdout.write(d); });
-  child.stderr.on('data', d => { stderr += d.toString(); process.stderr.write(d); });
-
-  const exitCode = await new Promise((resolve) => child.on('close', resolve));
-  const durationMs = Date.now() - started;
-
-  const tokens = extractTokens(stdout) || { input: 0, output: 0 };
-  const cost = await estimateCost(model, tokens);
-
-  if (exitCode === 0) {
+  try {
+    const { tokens, durationMs } = await runCodex({
+      model,
+      effort,
+      promptPath,
+      env: taskEnv,
+      onStdout: d => process.stdout.write(d),
+      onStderr: d => process.stderr.write(d),
+      codexBin: args.codexBin || 'codex'
+    });
+    const cost = await estimateCost(model, tokens);
     await appendEvent(logPath, {
       session_id: task.session_id,
       wave: task.wave,
@@ -225,39 +248,28 @@ async function cmdCodex(args) {
       duration_ms: durationMs,
       evidence_paths: [`tasks/waves/${task.wave}/${task.task_id}/result.md`]
     });
-  } else {
-    await appendEvent(logPath, {
-      session_id: task.session_id,
-      wave: task.wave,
-      task_id: task.task_id,
-      agent: 'implementer',
-      model,
-      action: 'task.blocked',
-      outcome: 'failure',
-      tokens,
-      cost_usd_estimate: cost,
-      duration_ms: durationMs,
-      notes: stderr.slice(0, 500)
-    });
+    process.exit(0);
+  } catch (err) {
+    if (err instanceof CodexError) {
+      const tokens = { input: 0, output: 0 };
+      const cost = await estimateCost(model, tokens);
+      await appendEvent(logPath, {
+        session_id: task.session_id,
+        wave: task.wave,
+        task_id: task.task_id,
+        agent: 'implementer',
+        model,
+        action: 'task.blocked',
+        outcome: 'failure',
+        tokens,
+        cost_usd_estimate: cost,
+        notes: `[${err.code}] ${err.stderr.slice(0, 400)}`
+      });
+      console.error(`[dispatch] codex failed: ${err.code} — ${err.message}`);
+      process.exit(err.exitCode && err.exitCode > 0 ? err.exitCode : 1);
+    }
+    throw err;
   }
-  process.exit(exitCode);
-}
-
-function extractTokens(stdout) {
-  for (const line of stdout.split(/\r?\n/).reverse()) {
-    if (!line.trim()) continue;
-    try {
-      const j = JSON.parse(line);
-      if (j.usage) {
-        return {
-          input: j.usage.input_tokens || j.usage.prompt_tokens || 0,
-          output: j.usage.output_tokens || j.usage.completion_tokens || 0,
-          cached: j.usage.cache_read_tokens || 0
-        };
-      }
-    } catch { /* skip */ }
-  }
-  return null;
 }
 
 function parseArgs(argv) {

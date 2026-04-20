@@ -14,7 +14,7 @@ Steps:
 1. Determine wave N: if $ARGUMENTS is empty, pick the latest wave with status = `accepted`.
 2. Run the background launcher:
    ```bash
-   node ${NIGHTSHIFT_HOME:-~/.nightshift}/core/scripts/wave-reviewer.mjs "$PWD" <N>
+   nightshift wave-reviewer "$PWD" <N>
    ```
    This spawns `codex exec --json --model gpt-5.4` with the wave-review prompt in the background and returns a PID.
 

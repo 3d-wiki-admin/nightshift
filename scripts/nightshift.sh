@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+# nightshift — top-level CLI for the nightshift harness.
+#
+# This file is installed (via `scripts/install.sh --link-bin`) as
+# `nightshift` on the user's PATH. It dispatches to subcommands that wrap
+# the scripts under core/scripts/ — so Claude Code agent prompts can
+# reference `nightshift <sub>` instead of repo-relative paths that break
+# once the plugin is copied to cache (see P0.3).
+#
+# Subcommands (Wave A scope):
+#   nightshift doctor                      — preflight environment check
+#   nightshift --version | -V              — print version
+#   nightshift --help | -h                 — this help
+#
+# Runtime passthroughs (for scripts + agents):
+#   nightshift dispatch <args>             — core/scripts/dispatch.mjs
+#   nightshift replay <args>               — core/scripts/replay-events.mjs
+#   nightshift compliance [project]        — core/scripts/compliance-reporter.mjs
+#   nightshift status [project]            — core/scripts/project-status.mjs
+#   nightshift provision <args>            — core/scripts/provision.mjs
+#   nightshift truth-score <args>          — core/scripts/truth-score.mjs
+#   nightshift router <contract.json>      — core/scripts/router.mjs
+#   nightshift checkpoint <cmd> ...        — core/scripts/checkpoint-manager.sh
+#   nightshift preflight [project]         — core/scripts/preflight.sh
+#   nightshift health-ping [project]       — core/scripts/health-ping.mjs
+#   nightshift digest [project]            — core/scripts/morning-digest.mjs
+#   nightshift wave-reviewer <cmd> ...     — core/scripts/wave-reviewer.mjs
+#   nightshift wave-review-consumer <args> — core/scripts/wave-review-consumer.mjs
+#   nightshift post-sync-docs [project]    — core/scripts/post-sync-docs.mjs
+#   nightshift infra-audit [project]       — core/scripts/infra-audit.mjs
+#   nightshift worktree <cmd> ...          — core/scripts/worktree-manager.sh
+#   nightshift run-with-secrets <cmd> ...  — core/scripts/run-with-secrets.sh
+#   nightshift snapshot <dir>              — core/scripts/snapshot.sh
+#
+# Wave B will add the user-facing `init`, `new`, `doctor` subcommands that
+# drive the idea-first flow.
+set -euo pipefail
+
+# ---------- resolve repo root even when invoked via a symlink ----------
+self="${BASH_SOURCE[0]}"
+# Chase symlinks portably (macOS lacks GNU readlink -f).
+while [ -L "$self" ]; do
+  link_target="$(readlink "$self")"
+  case "$link_target" in
+    /*) self="$link_target" ;;
+    *)  self="$(cd "$(dirname "$self")" && cd "$(dirname "$link_target")" && pwd)/$(basename "$link_target")" ;;
+  esac
+done
+root="$(cd "$(dirname "$self")/.." && pwd)"
+
+VERSION="$(node -e "console.log(require('$root/package.json').version)" 2>/dev/null || echo 'unknown')"
+
+# ---------- helpers ----------
+print_help() {
+  sed -n '1,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+}
+
+die() { echo "nightshift: $*" >&2; exit 2; }
+
+# ---------- doctor ----------
+cmd_doctor() {
+  local ok=0 warn=0 fail=0
+  pass() { printf "  \e[32m✓\e[0m %s\n" "$1"; ok=$((ok+1)); }
+  warn() { printf "  \e[33m!\e[0m %s\n" "$1"; warn=$((warn+1)); }
+  fail() { printf "  \e[31m✗\e[0m %s\n" "$1"; fail=$((fail+1)); }
+
+  echo "nightshift doctor (v$VERSION)"
+  echo "repo: $root"
+  echo
+
+  # Required tooling
+  command -v node       >/dev/null 2>&1 && pass "node: $(node --version)"       || fail "node missing (need v22+)"
+  command -v git        >/dev/null 2>&1 && pass "git: $(git --version | head -1)" || fail "git missing"
+  command -v claude     >/dev/null 2>&1 && pass "claude CLI present"             || warn "claude CLI not on PATH — Claude plugin wiring untested"
+  command -v codex      >/dev/null 2>&1 && pass "codex CLI: $(codex --version 2>/dev/null | head -1)" || warn "codex CLI missing — implementer will fall back to Claude Sonnet"
+
+  # Package manager
+  if   command -v pnpm >/dev/null 2>&1; then pass "pnpm: $(pnpm --version)"
+  elif command -v npm  >/dev/null 2>&1; then warn "pnpm missing, npm present — pnpm is preferred"
+  else                                         fail "neither pnpm nor npm available"
+  fi
+
+  # Claude plugin runtime
+  if [ -d "$root/claude/bin/runtime" ] && [ -f "$root/claude/bin/runtime/MANIFEST.json" ]; then
+    local count
+    count="$(node -e "console.log(require('$root/claude/bin/runtime/MANIFEST.json').files.length)" 2>/dev/null || echo '?')"
+    pass "claude plugin runtime packaged ($count files)"
+  else
+    warn "claude plugin runtime not packaged — run: nightshift prepare-plugin"
+  fi
+
+  # launchd agents (informational, macOS only)
+  if [ "$(uname)" = "Darwin" ]; then
+    if launchctl list 2>/dev/null | grep -q ai.nightshift; then
+      pass "launchd: ai.nightshift.* loaded"
+    else
+      warn "launchd agents not loaded — optional, needed only for overnight runs"
+    fi
+  fi
+
+  # Node deps
+  if [ -d "$root/node_modules" ]; then pass "node_modules present"
+  else                                  warn "node_modules missing — run: pnpm install"
+  fi
+
+  # Git cleanliness (advisory)
+  if git -C "$root" diff --quiet 2>/dev/null && git -C "$root" diff --cached --quiet 2>/dev/null; then
+    pass "git tree clean"
+  else
+    warn "nightshift repo has uncommitted changes"
+  fi
+
+  echo
+  printf "doctor: \e[32m%d ok\e[0m  \e[33m%d warn\e[0m  \e[31m%d fail\e[0m\n" "$ok" "$warn" "$fail"
+  [ "$fail" -gt 0 ] && exit 1
+  [ "$warn" -gt 0 ] && exit 2
+  exit 0
+}
+
+# ---------- subcommand dispatch ----------
+sub="${1:-}"
+shift || true
+
+case "$sub" in
+  ''|-h|--help|help)          print_help; exit 0 ;;
+  -V|--version|version)        echo "nightshift $VERSION"; exit 0 ;;
+
+  doctor)                      cmd_doctor "$@" ;;
+  prepare-plugin)              exec bash "$root/scripts/prepare-claude-plugin-runtime.sh" "$@" ;;
+
+  # Runtime passthroughs (Node scripts)
+  dispatch)                    exec node "$root/core/scripts/dispatch.mjs" "$@" ;;
+  replay)                      exec node "$root/core/scripts/replay-events.mjs" "$@" ;;
+  compliance)                  exec node "$root/core/scripts/compliance-reporter.mjs" "$@" ;;
+  status)                      exec node "$root/core/scripts/project-status.mjs" "$@" ;;
+  provision)                   exec node "$root/core/scripts/provision.mjs" "$@" ;;
+  truth-score)                 exec node "$root/core/scripts/truth-score.mjs" "$@" ;;
+  router)                      exec node "$root/core/scripts/router.mjs" "$@" ;;
+  health-ping)                 exec node "$root/core/scripts/health-ping.mjs" "$@" ;;
+  digest|morning-digest)       exec node "$root/core/scripts/morning-digest.mjs" "$@" ;;
+  wave-reviewer)               exec node "$root/core/scripts/wave-reviewer.mjs" "$@" ;;
+  wave-review-consumer)        exec node "$root/core/scripts/wave-review-consumer.mjs" "$@" ;;
+  post-sync-docs)              exec node "$root/core/scripts/post-sync-docs.mjs" "$@" ;;
+  infra-audit)                 exec node "$root/core/scripts/infra-audit.mjs" "$@" ;;
+
+  # Runtime passthroughs (shell scripts)
+  checkpoint)                  exec bash "$root/core/scripts/checkpoint-manager.sh" "$@" ;;
+  preflight)                   exec bash "$root/core/scripts/preflight.sh" "$@" ;;
+  worktree)                    exec bash "$root/core/scripts/worktree-manager.sh" "$@" ;;
+  run-with-secrets)            exec bash "$root/core/scripts/run-with-secrets.sh" "$@" ;;
+  snapshot)                    exec bash "$root/core/scripts/snapshot.sh" "$@" ;;
+
+  # Wave B placeholders
+  init|new)
+    die "'$sub' is scheduled for Wave B. For now: mkdir + cd + 'claude' + '/plugin install <repo>/claude' + '/bootstrap'"
+    ;;
+
+  *) die "unknown subcommand '$sub'. Try: nightshift --help" ;;
+esac

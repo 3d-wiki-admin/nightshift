@@ -37,7 +37,7 @@ Shape per skill. Include: verdict (`accept` / `reject` / `revise`), reviewer mod
 
 ### 4. Events
 - `gate.passed` / `gate.failed` per gate.
-- `task.reviewed` with `{verdict, quality_score}` (score from `core/scripts/truth-score.mjs`).
+- `task.reviewed` with `{verdict, quality_score}` (score from `nightshift truth-score`).
 
 ## Pre-conditions
 - Refuse to review if reviewer model == implementer model. Emit `guard.violation` and halt.

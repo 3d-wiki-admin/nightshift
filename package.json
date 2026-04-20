@@ -14,11 +14,14 @@
     "url": "https://github.com/3d-wiki-admin/nightshift.git"
   },
   "scripts": {
-    "test": "node --test core/event-store/test/*.test.mjs core/scripts/test/*.test.mjs core/secrets/test/*.test.mjs core/provisioners/test/*.test.mjs claude/hooks/test/*.test.mjs",
+    "prepare-plugin": "bash scripts/prepare-claude-plugin-runtime.sh",
+    "pretest": "bash scripts/prepare-claude-plugin-runtime.sh >/dev/null 2>&1",
+    "test": "node --test core/event-store/test/*.test.mjs core/scripts/test/*.test.mjs core/secrets/test/*.test.mjs core/provisioners/test/*.test.mjs core/codex/test/*.test.mjs core/registry/test/*.test.mjs claude/hooks/test/*.test.mjs",
     "test:event-store": "node --test core/event-store/test/*.test.mjs",
     "test:scripts": "node --test core/scripts/test/*.test.mjs",
     "test:secrets": "node --test core/secrets/test/*.test.mjs",
     "test:provisioners": "node --test core/provisioners/test/*.test.mjs",
+    "test:codex": "node --test core/codex/test/*.test.mjs",
     "test:shell": "bash core/scripts/test/run-with-secrets.test.sh",
     "replay": "node core/scripts/replay-events.mjs",
     "truth-score": "node core/scripts/truth-score.mjs",

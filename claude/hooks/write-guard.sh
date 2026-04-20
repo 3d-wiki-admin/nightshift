@@ -37,8 +37,8 @@ EOF
 }
 
 case "$rel" in
-  tasks/events.ndjson) hard_block "Never write to events.ndjson directly. Use core/scripts/dispatch.mjs appendEvent / append." ;;
-  tasks/state.json)    hard_block "state.json is a projection. Use core/scripts/replay-events.mjs --write." ;;
+  tasks/events.ndjson) hard_block "Never write to events.ndjson directly. Use the nightshift dispatch layer (appendEvent)." ;;
+  tasks/state.json)    hard_block "state.json is a projection. Regenerate it by replaying events." ;;
   tasks/compliance.md) ns_allow ;;
   tasks/questions.md)  ns_allow ;;
   tasks/decisions.md)  ns_allow ;;
