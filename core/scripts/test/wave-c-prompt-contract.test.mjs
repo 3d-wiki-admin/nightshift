@@ -60,9 +60,9 @@ test('all three skills explicitly forbid direct file writes to memory surface', 
   const cp = await read('core/skills/context-packer/SKILL.md');
   const pw = await read('core/skills/plan-writer/SKILL.md');
   const wo = await read('core/skills/wave-orchestrator/SKILL.md');
+  // Every prompt must carry an explicit raw-write prohibition in addition
+  // to recommending the CLI path; "mentions the CLI" is not enough.
   assert.match(cp, /NEVER write memory files directly/);
-  // plan-writer mentions the CLI as the write path.
-  assert.match(pw, /nightshift memory-record/);
-  // orchestrator explicitly forbids direct writes.
+  assert.match(pw, /NEVER write `memory\/\*\.\{ndjson,json\}` directly/);
   assert.match(wo, /Only the CLI writes `memory\//);
 });

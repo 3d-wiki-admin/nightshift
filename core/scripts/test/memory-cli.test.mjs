@@ -104,6 +104,73 @@ test('memory-retrieve --markdown emits a compact markdown block', async () => {
   await fs.rm(p, { recursive: true, force: true });
 });
 
+test('memory-record service-unset removes a specific field', async () => {
+  const p = tmp();
+  run(['memory-record', p, 'service', '--provider', 'vercel', '--patch', '{"project_id":"g1","preview_url":"https://x.vercel.app"}']);
+  const r = run(['memory-record', p, 'service-unset', '--provider', 'vercel', '--field', 'preview_url']);
+  assert.equal(r.status, 0, r.stderr);
+  const svc = JSON.parse(await fs.readFile(path.join(p, 'memory', 'services.json'), 'utf8'));
+  assert.equal(svc.providers.vercel.project_id, 'g1');
+  assert.equal(svc.providers.vercel.preview_url, undefined);
+  await fs.rm(p, { recursive: true, force: true });
+});
+
+test('memory-record service-remove drops the whole provider bucket', async () => {
+  const p = tmp();
+  run(['memory-record', p, 'service', '--provider', 'vercel', '--patch', '{"project_id":"g1"}']);
+  run(['memory-record', p, 'service', '--provider', 'supabase', '--patch', '{"project_ref":"abc"}']);
+  const r = run(['memory-record', p, 'service-remove', '--provider', 'vercel']);
+  assert.equal(r.status, 0, r.stderr);
+  const svc = JSON.parse(await fs.readFile(path.join(p, 'memory', 'services.json'), 'utf8'));
+  assert.equal(svc.providers.vercel, undefined);
+  assert.equal(svc.providers.supabase.project_ref, 'abc');
+  await fs.rm(p, { recursive: true, force: true });
+});
+
+test('memory-record reuse-remove drops a specific entry', async () => {
+  const p = tmp();
+  run(['memory-record', p, 'reuse', '--file', 'a.ts', '--symbol', 'A', '--purpose', 'x']);
+  run(['memory-record', p, 'reuse', '--file', 'a.ts', '--symbol', 'B', '--purpose', 'y']);
+  const r = run(['memory-record', p, 'reuse-remove', '--file', 'a.ts', '--symbol', 'A']);
+  assert.equal(r.status, 0, r.stderr);
+  const idx = JSON.parse(await fs.readFile(path.join(p, 'memory', 'reuse-index.json'), 'utf8'));
+  assert.equal(idx.entries.length, 1);
+  assert.equal(idx.entries[0].symbol, 'B');
+  await fs.rm(p, { recursive: true, force: true });
+});
+
+test('memory-retrieve --decisions-limit caps decisions output', async () => {
+  const p = tmp();
+  for (let i = 0; i < 5; i++) run(['memory-record', p, 'decision', '--subject', `decision #${i}`]);
+  const r1 = run(['memory-retrieve', p]);
+  const full = JSON.parse(r1.stdout);
+  assert.equal(full.decisions.length, 5);
+  const r2 = run(['memory-retrieve', p, '--decisions-limit', '2']);
+  const capped = JSON.parse(r2.stdout);
+  assert.equal(capped.decisions.length, 2);
+  await fs.rm(p, { recursive: true, force: true });
+});
+
+test('memory-retrieve --incidents-limit caps incidents output', async () => {
+  const p = tmp();
+  for (let i = 0; i < 4; i++) run(['memory-record', p, 'incident', '--symptom', `incident #${i}`]);
+  const r = run(['memory-retrieve', p, '--incidents-limit', '1']);
+  const slice = JSON.parse(r.stdout);
+  assert.equal(slice.incidents.length, 1);
+  await fs.rm(p, { recursive: true, force: true });
+});
+
+test('memory-retrieve --reuse-tag filters reuse entries', async () => {
+  const p = tmp();
+  run(['memory-record', p, 'reuse', '--file', 'a.ts', '--symbol', 'Auth', '--tags', 'auth']);
+  run(['memory-record', p, 'reuse', '--file', 'b.ts', '--symbol', 'DB', '--tags', 'db']);
+  const r = run(['memory-retrieve', p, '--reuse-tag', 'auth']);
+  const slice = JSON.parse(r.stdout);
+  assert.equal(slice.reuse_index.length, 1);
+  assert.equal(slice.reuse_index[0].symbol, 'Auth');
+  await fs.rm(p, { recursive: true, force: true });
+});
+
 test('memory-retrieve --include narrows to a subset', async () => {
   const p = tmp();
   run(['memory-record', p, 'decision', '--subject', 'x']);

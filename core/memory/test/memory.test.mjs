@@ -111,6 +111,68 @@ test('services.unsetProviderField removes a specific field', async () => {
   await fs.rm(p, { recursive: true, force: true });
 });
 
+test('services.read rejects schema_version > 1 (live file)', async () => {
+  const p = tmpProject();
+  await fs.mkdir(path.join(p, 'memory'), { recursive: true });
+  await fs.writeFile(path.join(p, 'memory', 'services.json'), JSON.stringify({
+    schema_version: 99, providers: {}
+  }), 'utf8');
+  await assert.rejects(() => services.read(p), /schema_version 99 is newer/);
+  await fs.rm(p, { recursive: true, force: true });
+});
+
+test('services.read rejects schema_version > 1 even when only .bak exists (no bypass via corrupt primary)', async () => {
+  const p = tmpProject();
+  await fs.mkdir(path.join(p, 'memory'), { recursive: true });
+  // Corrupt primary → falls to .bak recovery. The .bak must ALSO be schema-checked.
+  await fs.writeFile(path.join(p, 'memory', 'services.json'), '{{{ not json', 'utf8');
+  await fs.writeFile(path.join(p, 'memory', 'services.json.bak'), JSON.stringify({
+    schema_version: 99, providers: {}
+  }), 'utf8');
+  await assert.rejects(() => services.read(p), /schema_version 99 is newer/);
+  await fs.rm(p, { recursive: true, force: true });
+});
+
+test('services.read recovers from corrupt primary via .bak when schema is OK', async () => {
+  const p = tmpProject();
+  await fs.mkdir(path.join(p, 'memory'), { recursive: true });
+  await fs.writeFile(path.join(p, 'memory', 'services.json'), 'not valid json', 'utf8');
+  await fs.writeFile(path.join(p, 'memory', 'services.json.bak'), JSON.stringify({
+    schema_version: 1, providers: { vercel: { project_id: 'recovered' } }
+  }), 'utf8');
+  const state = await services.read(p);
+  assert.equal(state.providers.vercel.project_id, 'recovered');
+  await fs.rm(p, { recursive: true, force: true });
+});
+
+test('reuse-index.read rejects schema_version > 1 (live file)', async () => {
+  const p = tmpProject();
+  await fs.mkdir(path.join(p, 'memory'), { recursive: true });
+  await fs.writeFile(path.join(p, 'memory', 'reuse-index.json'), JSON.stringify({
+    schema_version: 42, entries: []
+  }), 'utf8');
+  await assert.rejects(() => reuseIndex.read(p), /schema_version 42 is newer/);
+  await fs.rm(p, { recursive: true, force: true });
+});
+
+test('reuse-index.read rejects schema_version > 1 even via .bak recovery', async () => {
+  const p = tmpProject();
+  await fs.mkdir(path.join(p, 'memory'), { recursive: true });
+  await fs.writeFile(path.join(p, 'memory', 'reuse-index.json'), '{{{ broken', 'utf8');
+  await fs.writeFile(path.join(p, 'memory', 'reuse-index.json.bak'), JSON.stringify({
+    schema_version: 42, entries: []
+  }), 'utf8');
+  await assert.rejects(() => reuseIndex.read(p), /schema_version 42 is newer/);
+  await fs.rm(p, { recursive: true, force: true });
+});
+
+test('reuse-index.read returns blank state on ENOENT', async () => {
+  const p = tmpProject();
+  const r = await reuseIndex.read(p);
+  assert.equal(r.schema_version, 1);
+  assert.deepEqual(r.entries, []);
+});
+
 test('services.removeProvider drops the whole bucket', async () => {
   const p = tmpProject();
   await services.setProvider(p, 'vercel', { project_id: 'g1' });

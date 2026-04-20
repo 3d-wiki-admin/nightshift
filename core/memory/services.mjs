@@ -40,23 +40,32 @@ function blank() {
   };
 }
 
+function assertSchema(parsed, label) {
+  if (parsed == null) throw new Error(`${label}: null payload`);
+  const v = Number(parsed.schema_version);
+  if (Number.isInteger(v) && v > SCHEMA_VERSION) {
+    throw new Error(`${label}: schema_version ${v} is newer than this binary (${SCHEMA_VERSION})`);
+  }
+  return parsed;
+}
+
 export async function read(project) {
   const p = filePath(project);
+  let parsed;
   try {
     const text = await fs.readFile(p, 'utf8');
-    const parsed = JSON.parse(text);
-    if (parsed.schema_version > SCHEMA_VERSION) {
-      throw new Error(`services.json schema_version ${parsed.schema_version} is newer than this binary (${SCHEMA_VERSION})`);
-    }
-    return parsed;
+    parsed = JSON.parse(text);
   } catch (err) {
     if (err.code === 'ENOENT') return blank();
-    // Attempt .bak recovery.
     try {
       const backup = await fs.readFile(`${p}.bak`, 'utf8');
-      return JSON.parse(backup);
-    } catch { throw new Error(`services.json is corrupt and no .bak recovery available: ${p}`); }
+      parsed = JSON.parse(backup);
+    } catch {
+      throw new Error(`services.json is corrupt and no .bak recovery available: ${p}`);
+    }
   }
+  // Hard schema guard applies to BOTH live file and .bak recovery.
+  return assertSchema(parsed, `services.json (${p})`);
 }
 
 // Merge a partial provider record into services.providers[provider].

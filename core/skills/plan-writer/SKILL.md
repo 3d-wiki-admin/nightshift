@@ -76,4 +76,5 @@ Every API route: method, path, request schema, response schema, errors. Zod shap
 - **Decisions in memory override plan.** If an earlier `decisions.ndjson` entry settles a question, honor it; do not re-litigate. If you disagree, write a `supersedes: <old-id>` decision explaining why.
 - **Research is required for libs you haven't used recently** — do not fabricate API shapes.
 - **Reuse first.** If `reuse-index.json` has an entry that fits, plan to use it. Create a new helper ONLY if no existing entry applies.
+- **NEVER write `memory/*.{ndjson,json}` directly** with Write/Edit/MultiEdit/NotebookEdit. All persisted memory state (decisions, incidents, services, reuse-index) flows through the `nightshift memory-record` CLI. Raw writes corrupt the append-only + atomic invariants.
 - **NO LYING OR CHEATING.** Cite sources and decision ids. If you guessed, say you guessed in notes.
