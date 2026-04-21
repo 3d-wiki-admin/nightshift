@@ -75,9 +75,111 @@ Before every sub-invocation, check your own usage:
 - `yellow` (75-85%): summarize, refer to files by path.
 - `red` (85%+): do not reason in main; delegate everything.
 
+## Wave-end handoff
+
+After emitting `wave.accepted` for the current wave, IF a next wave
+manifest exists at `tasks/waves/<N+1>/manifest.yaml`, perform these
+steps BEFORE ending your turn. This lets the overnight pinger
+resurrect a FRESH Claude session for wave N+1 via `claude -p
+/nightshift:implement --wave=<N+1>` — avoiding ~100k context
+accumulation per wave.
+
+1. **Write** `tasks/waves/<N>/handoff-to-next.md` with exactly 6
+   H2 sections IN ORDER (parser rejects missing / duplicate /
+   out-of-order):
+   ```markdown
+   # Handoff — wave <N> → wave <N+1>
+
+   ## Machine fields
+   - source_wave: <N>
+   - next_wave: <N+1>
+   - source_session_id: <your session_id — same as top-level below>
+   - handoff_token: <ULID or timestamp+hex, for audit correlation>
+
+   ## Wave <N> summary
+   <one paragraph: what completed, what cut, notable findings>
+
+   ## Pending from this wave
+   <bulleted: blocked/paused/follow-up tasks by id; "- none" if clean>
+
+   ## Next wave pointer
+   - manifest: tasks/waves/<N+1>/manifest.yaml
+   - first task: <TASK-ID from manifest>
+
+   ## Canonical state to re-read
+   - tasks/events.ndjson
+   - CLAUDE.md
+   - HANDOFF.md
+   - memory/constitution.md
+   - tasks/spec.md
+   - tasks/plan.md
+   - tasks/paused.md
+   - tasks/waves/<N+1>/manifest.yaml
+   - tasks/waves/<N>/handoff-to-next.md
+
+   ## Ephemeral nuances
+   <bulleted: session notes NOT captured in events. Overnight
+    autonomous runs: usually "- none". Daytime mixed: capture
+    user nudges here.>
+   ```
+   The first entry in the re-read list MUST be `tasks/events.ndjson`
+   (canonical store). The orchestrator's own `tasks/events.ndjson`
+   write-discipline ensures no info is lost here.
+
+2. **Emit** `wave.handoff` via nightshift dispatch append. Source
+   session_id from env (fall back to log only if env missing):
+   ```bash
+   SID="${NIGHTSHIFT_SESSION_ID:-$(grep '"action":"session.start"' \
+          tasks/events.ndjson | tail -n 1 | jq -r .session_id)}"
+   if ! [[ "$SID" =~ ^sess_[0-9A-HJKMNP-TV-Z]{20,40}$ ]]; then
+     SID="$(grep '"action":"session.start"' tasks/events.ndjson | \
+             tail -n 1 | jq -r .session_id)"
+   fi
+   TOKEN="$(date -u +%Y%m%dT%H%M%SZ)-$(openssl rand -hex 4)"
+   jq -nc --arg sid "$SID" \
+      --argjson sw <N> \
+      --argjson nw <N+1> \
+      --arg token "$TOKEN" \
+      --arg hp "tasks/waves/<N>/handoff-to-next.md" \
+      --arg nm "tasks/waves/<N+1>/manifest.yaml" '{
+        session_id: $sid,
+        wave: $sw,
+        agent: "wave-orchestrator",
+        action: "wave.handoff",
+        outcome: "success",
+        payload: {
+          source_wave: $sw,
+          next_wave: $nw,
+          source_session_id: $sid,
+          handoff_token: $token,
+          handoff_path: $hp,
+          next_manifest: $nm
+        }
+      }' | nightshift dispatch append --log tasks/events.ndjson
+   ```
+   `payload.source_session_id` is REQUIRED (consumers validate
+   against it, not against top-level `session_id`, so repaired
+   events emitted by the pinger still pass the check).
+
+3. **Atomicity**: write file FIRST, emit event SECOND. If file write
+   fails → abort before event. If event emission fails after file is
+   written → retry up to 2×; if still failing, leave the file for
+   the pinger's orphan-repair pass to pick up on the next tick.
+
+4. **Mode-agnostic**: do the same thing whether invoked interactively
+   or via `claude -p` — the pinger-side `NIGHTSHIFT_AUTONOMOUS=1`
+   env is what gates autonomous resurrection, not skill-side logic.
+   Just write the handoff + event and let your turn end naturally.
+
+If no next wave manifest exists (this was the last wave), skip
+handoff entirely — orchestrator emits `session.end` per existing
+flow.
+
 ## Outputs
 - Event stream.
 - `tasks/waves/<N>/summary.md` at wave end.
+- `tasks/waves/<N>/handoff-to-next.md` at wave end (if next wave
+  manifest exists).
 - Updated `memory/services.json`, `memory/decisions.ndjson`, `memory/reuse-index.json`, `memory/incidents.ndjson` (via the CLI helpers above).
 
 ## Guardrails

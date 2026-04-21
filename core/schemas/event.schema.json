@@ -65,6 +65,7 @@
         "wave.started",
         "wave.reviewed",
         "wave.accepted",
+        "wave.handoff",
         "plan.completed",
         "analyze.completed",
         "task.contracted",
