@@ -61,3 +61,49 @@ Also append events:
 - **Do not grade quality.** That's the truth-scorer. Quality score is NEVER a reason to halt.
 - **Cite exact location** for every finding (`spec.md §3`, `contract.md line 14`) — findings without locations are rejected.
 - If no findings, produce the report with `CRITICAL: 0 WARNING: 0` — do not skip the file.
+
+## 9. Emit completion event
+
+On a successful analyzer run, BEFORE returning, emit ONE event.
+Compute the values from your own report file you just produced
+(count CRITICAL/WARNING/NOTE markers, extract the verdict line).
+Then substitute them inline — do NOT rely on shell variables
+that aren't defined in this prompt:
+
+  SID="$(tail -n 1 tasks/events.ndjson | jq -r .session_id)"
+  jq -nc --arg sid "$SID" '{
+    session_id: $sid,
+    agent: "analyzer",
+    action: "analyze.completed",
+    outcome: "success",
+    payload: {
+      verdict: "<VERDICT>",
+      critical: <CRITICAL>,
+      warning: <WARNING>,
+      note: <NOTE>,
+      report: "<REPORT_PATH>"
+    }
+  }' | nightshift dispatch append --log tasks/events.ndjson
+
+Substitute every `<...>` placeholder with a concrete value from
+the report you just produced — the jq program above is INVALID
+until you do, but is valid jq after substitution:
+- `<VERDICT>` → `accept` or `revise` (from your report's Verdict line).
+- `<CRITICAL>` → integer; count of CRITICAL findings.
+- `<WARNING>` → integer; count of WARNING findings.
+- `<NOTE>` → integer; count of NOTE findings.
+- `<REPORT_PATH>` → the path of the report you wrote, e.g.
+  `tasks/analysis-20260421T012548Z.md`.
+
+Example after substitution (this WILL run):
+  jq -nc --arg sid "$SID" '{
+    session_id: $sid,
+    agent: "analyzer",
+    action: "analyze.completed",
+    outcome: "success",
+    payload: { verdict: "accept", critical: 0, warning: 12, note: 8,
+               report: "tasks/analysis-20260421T012548Z.md" }
+  }' | nightshift dispatch append --log tasks/events.ndjson
+
+The dashboard / status reads this event to mark the `analyze`
+pipeline stage done.

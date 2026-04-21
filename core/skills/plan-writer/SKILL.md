@@ -78,3 +78,33 @@ Every API route: method, path, request schema, response schema, errors. Zod shap
 - **Reuse first.** If `reuse-index.json` has an entry that fits, plan to use it. Create a new helper ONLY if no existing entry applies.
 - **NEVER write `memory/*.{ndjson,json}` directly** with Write/Edit/MultiEdit/NotebookEdit. All persisted memory state (decisions, incidents, services, reuse-index) flows through the `nightshift memory-record` CLI. Raw writes corrupt the append-only + atomic invariants.
 - **NO LYING OR CHEATING.** Cite sources and decision ids. If you guessed, say you guessed in notes.
+
+## 9. Emit completion event (canonical pipeline-stage signal)
+
+On a successful plan-writer run, BEFORE returning, emit ONE event:
+
+  SID="$(tail -n 1 tasks/events.ndjson | jq -r .session_id)"
+  jq -nc --arg sid "$SID" '{
+    session_id: $sid,
+    agent: "plan-writer",
+    action: "plan.completed",
+    outcome: "success",
+    payload: {
+      artefacts: [
+        "tasks/plan.md",
+        "tasks/research.md",
+        "tasks/data-model.md",
+        "tasks/contracts/API.md"
+      ]
+    }
+  }' | nightshift dispatch append --log tasks/events.ndjson
+
+Source of truth for session_id: the last existing event's session_id
+(every project has at least one `session.start` from
+`nightshift init`, so the tail is always populated). Do NOT generate
+a new session id — reuse the active one so the dashboard / status
+keeps the pipeline grouped.
+
+This event is what the dashboard / status reads to mark the `plan`
+pipeline stage as done. If you skip this step, /status will show
+`plan: ◌ pending` even after artefacts exist.

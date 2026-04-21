@@ -65,6 +65,8 @@
         "wave.started",
         "wave.reviewed",
         "wave.accepted",
+        "plan.completed",
+        "analyze.completed",
         "task.contracted",
         "task.context_packed",
         "task.routed",
