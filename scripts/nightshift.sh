@@ -230,7 +230,10 @@ case "$sub" in
         if [ -z "$proj" ]; then
           die "usage: nightshift launchd install --project <path> [--allow-self-target]"
         fi
-        exec bash "$root/scripts/install-launchd.sh" --project "$proj" "${passthru[@]}"
+        # bash 3.2 (default on macOS) + set -u barfs on an empty array
+        # expansion `"${passthru[@]}"` — the `+` form expands to nothing
+        # when passthru is empty, preserving all args otherwise.
+        exec bash "$root/scripts/install-launchd.sh" --project "$proj" ${passthru[@]+"${passthru[@]}"}
         ;;
       uninstall)
         exec bash "$root/scripts/install-launchd.sh" --uninstall "$@"

@@ -30,6 +30,26 @@ test('nightshift launchd install without --project exits non-zero with a usage e
   assert.match(res.stderr, /--project/);
 });
 
+test('nightshift launchd install does NOT crash on empty passthru under bash 3.2 set -u', () => {
+  // Regression for the `passthru[@]: unbound variable` bug — bash 3.2
+  // (default on macOS) + `set -u` explodes on `"${passthru[@]}"` when the
+  // array is empty. The fix uses the `${array[@]+"${array[@]}"}` idiom.
+  // We simulate the smallest possible invocation (just --project) and
+  // assert stderr contains NEITHER "unbound variable" NOR "passthru[@]".
+  const res = run(['launchd', 'install', '--project', '/nonexistent-for-regression-check']);
+  // On non-Darwin the underlying script exits 0 with "macOS only; skipping",
+  // on Darwin it exits 2 with "project dir not found". Either way stderr
+  // must be clean of the bash-3.2 crash.
+  assert.ok(
+    !/unbound variable/.test(res.stderr),
+    `stderr leaked the bash-3.2 unbound variable error: ${res.stderr}`
+  );
+  assert.ok(
+    !/passthru\[@\]/.test(res.stderr),
+    `stderr referenced passthru[@] — the empty-array fix regressed: ${res.stderr}`
+  );
+});
+
 test('nightshift launchd unknown op is rejected', () => {
   const res = run(['launchd', 'doof']);
   assert.equal(res.status, 2);
