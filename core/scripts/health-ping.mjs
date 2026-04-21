@@ -294,7 +294,26 @@ async function detectResurrectFreshOpportunity(projectDir, events) {
   });
 
   const cli = process.env.NIGHTSHIFT_CLAUDE_CMD || 'claude';
-  const child = spawn(cli, [
+
+  // Synchronous pre-check — detached+unref'd spawns swallow exec
+  // failures (child.on('error') may not fire before parent exits).
+  // If the binary isn't on PATH / isn't executable, cleanup NOW
+  // before we lose the chance.
+  const cliPath = await resolveExecutable(cli);
+  if (!cliPath) {
+    console.error(`[pinger] claude -p not executable at "${cli}"; aborting.`);
+    await appendEvent(logPath, {
+      session_id: newSid,
+      agent: 'system',
+      action: 'session.halted',
+      outcome: 'failure',
+      payload: { reason: 'pinger_spawn_failed', error: `cli not found: ${cli}` }
+    }).catch(() => {});
+    await fs.unlink(claimFile).catch(() => {});
+    return null;
+  }
+
+  const child = spawn(cliPath, [
     '-p',
     '--dangerously-skip-permissions',
     `/nightshift:implement --wave=${next_wave}`
@@ -448,6 +467,33 @@ async function maybeRepairOrphanHandoff(projectDir, events) {
     });
     return;
   }
+}
+
+// Hotfix-3 H16 Unit 3: synchronous executable resolution. Detached
+// `spawn()` with stdio:ignore swallows exec-not-found failures (the
+// child.on('error') listener may not fire before the parent pinger
+// exits). Resolve the path synchronously via stat/access so we can
+// fail the claim cleanly BEFORE returning from the pinger tick.
+async function resolveExecutable(cli) {
+  // Absolute or relative path with a slash — check directly.
+  if (cli.includes('/')) {
+    try {
+      await fs.access(cli, fs.constants.X_OK);
+      return cli;
+    } catch {
+      return null;
+    }
+  }
+  // Bare command name — walk PATH.
+  const pathEnv = process.env.PATH || '';
+  for (const dir of pathEnv.split(path.delimiter).filter(Boolean)) {
+    const candidate = path.join(dir, cli);
+    try {
+      await fs.access(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch { /* not here, try next */ }
+  }
+  return null;
 }
 
 async function pathExists(targetPath) {

@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { renderHandoff } from '../wave-handoff.mjs';
 
 const ROOT = path.resolve(new URL('../../..', import.meta.url).pathname);
@@ -54,16 +54,35 @@ async function readEvents(project) {
   }
 }
 
-async function setupFakeClaude() {
+async function setupFakeClaude(options = {}) {
+  const { sleepMs = 0, writeDispatchEvent = false } = options;
   const binDir = tmp('ns-h16-bin');
   const recordPath = path.join(binDir, 'claude-record.ndjson');
   const claudePath = path.join(binDir, 'claude-stub.mjs');
   await writeExec(claudePath, [
     '#!/usr/bin/env node',
     "import { appendFileSync } from 'node:fs';",
+    "import path from 'node:path';",
     `const recordPath = ${JSON.stringify(recordPath)};`,
     'const payload = { argv: process.argv.slice(2), env: { NIGHTSHIFT_SESSION_ID: process.env.NIGHTSHIFT_SESSION_ID || null } };',
-    "appendFileSync(recordPath, JSON.stringify(payload) + '\\n');"
+    "appendFileSync(recordPath, JSON.stringify(payload) + '\\n');",
+    writeDispatchEvent
+      ? [
+          "const waveArg = process.argv.slice(2).find(arg => /--wave=\\d+/.test(arg));",
+          'const wave = waveArg ? Number(waveArg.match(/--wave=(\\d+)/)[1]) : null;',
+          "const logPath = path.join(process.cwd(), 'tasks', 'events.ndjson');",
+          "appendFileSync(logPath, JSON.stringify({",
+          "  event_id: `ev_${Date.now()}_FAKECLAUDE`,",
+          "  ts: new Date().toISOString(),",
+          "  session_id: process.env.NIGHTSHIFT_SESSION_ID || null,",
+          "  agent: 'fake-claude',",
+          "  action: 'task.dispatched',",
+          '  wave,',
+          "  task_id: 'TASK_FAKE_001'",
+          "}) + '\\n');"
+        ].join('\n')
+      : '',
+    sleepMs > 0 ? `setTimeout(() => process.exit(0), ${sleepMs});` : ''
   ].join('\n'));
   return { binDir, claudePath, recordPath };
 }
@@ -72,6 +91,29 @@ function runHealthPing(project, env = {}) {
   return spawnSync('node', [HEALTH_PING, project], {
     encoding: 'utf8',
     env: { ...process.env, NIGHTSHIFT_AUTO_CHECKPOINT: '0', ...env }
+  });
+}
+
+function runHealthPingAsync(project, env = {}, delayMs = 0) {
+  return new Promise((resolve, reject) => {
+    const launch = () => {
+      const child = spawn('node', [HEALTH_PING, project], {
+        env: { ...process.env, NIGHTSHIFT_AUTO_CHECKPOINT: '0', ...env },
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', chunk => { stdout += chunk; });
+      child.stderr.on('data', chunk => { stderr += chunk; });
+      child.on('error', reject);
+      child.on('close', status => resolve({ status, stdout, stderr }));
+    };
+
+    if (delayMs > 0) {
+      setTimeout(launch, delayMs);
+    } else {
+      launch();
+    }
   });
 }
 
@@ -93,6 +135,22 @@ async function waitForRecordCount(recordPath, expected, timeoutMs = 2000) {
     await new Promise(resolve => setTimeout(resolve, 25));
   }
   return readRecords(recordPath);
+}
+
+async function waitFor(fn, timeoutMs = 2000, intervalMs = 25) {
+  const start = Date.now();
+  let lastError;
+  while ((Date.now() - start) < timeoutMs) {
+    try {
+      const value = await fn();
+      if (value) return value;
+    } catch (err) {
+      lastError = err;
+    }
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+  }
+  if (lastError) throw lastError;
+  return await fn();
 }
 
 async function assertNoSpawn(recordPath) {
@@ -189,6 +247,28 @@ function claimPath(project, handoff) {
     .digest('hex')
     .slice(0, 16);
   return path.join(project, '.nightshift', `wave-claim-${key}`);
+}
+
+async function writeClaim(project, handoff, overrides = {}, ageMs = null) {
+  const filePath = claimPath(project, handoff);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  const claim = {
+    claim_key: path.basename(filePath).replace('wave-claim-', ''),
+    handoff_token: handoff.handoffToken,
+    triggering_handoff: 'ev_01HXYZ000000000000000H16',
+    source_wave: handoff.sourceWave,
+    next_wave: handoff.nextWave,
+    new_session_id: 'sess_01HXYZCLAIM000000000001',
+    pid: null,
+    created_at: new Date().toISOString(),
+    ...overrides
+  };
+  await fs.writeFile(filePath, JSON.stringify(claim, null, 2), 'utf8');
+  if (ageMs != null) {
+    const staleAt = new Date(Date.now() - ageMs);
+    await fs.utimes(filePath, staleAt, staleAt);
+  }
+  return filePath;
 }
 
 async function assertFreshSpawn(recordPath, expectedWave) {
@@ -291,6 +371,44 @@ test('F-B: unresolved question wins over handoff and preserves the H14 pause pat
   }
 });
 
+test('F-C: concurrent pinger runs race on one claim and only one fresh spawn wins', async () => {
+  const { binDir, claudePath, recordPath } = await setupFakeClaude({ sleepMs: 500 });
+  const project = await bootstrapProject();
+
+  try {
+    const handoff = await writeHandoff(project);
+    await writeManifest(project, 2);
+    await fs.writeFile(
+      path.join(project, 'tasks', 'events.ndjson'),
+      acceptedWaveFixture({ extraEvents: [waveHandoffEvent(handoff)] })
+        .map(event => JSON.stringify(event)).join('\n') + '\n',
+      'utf8'
+    );
+
+    const [first, second] = await Promise.all([
+      runHealthPingAsync(project, {
+        NIGHTSHIFT_AUTONOMOUS: '1',
+        NIGHTSHIFT_CLAUDE_CMD: claudePath
+      }),
+      runHealthPingAsync(project, {
+        NIGHTSHIFT_AUTONOMOUS: '1',
+        NIGHTSHIFT_CLAUDE_CMD: claudePath
+      }, 10)
+    ]);
+    assert.equal(first.status, 0, first.stderr);
+    assert.equal(second.status, 0, second.stderr);
+
+    const records = await waitForRecordCount(recordPath, 1);
+    assert.equal(records.length, 1, 'expected exactly one fresh claude invocation');
+
+    const claim = JSON.parse(await fs.readFile(claimPath(project, handoff), 'utf8'));
+    assert.ok(claim.new_session_id, 'expected claim file to be created');
+  } finally {
+    await fs.rm(project, { recursive: true, force: true });
+    await fs.rm(binDir, { recursive: true, force: true });
+  }
+});
+
 test('F-D: missing handoff or manifest files do not spawn and log a warning', async () => {
   const { binDir, claudePath, recordPath } = await setupFakeClaude();
   const project = await bootstrapProject();
@@ -380,6 +498,76 @@ test('F-E: already-dispatched next wave does not respawn', async () => {
   }
 });
 
+test('F-F: spawn failure removes the claim and emits session.halted without crashing the pinger', async () => {
+  const project = await bootstrapProject();
+
+  try {
+    const handoff = await writeHandoff(project);
+    await writeManifest(project, 2);
+    await fs.writeFile(
+      path.join(project, 'tasks', 'events.ndjson'),
+      acceptedWaveFixture({ extraEvents: [waveHandoffEvent(handoff)] })
+        .map(event => JSON.stringify(event)).join('\n') + '\n',
+      'utf8'
+    );
+
+    const missingClaude = path.join(project, 'does-not-exist', 'claude');
+    const res = runHealthPing(project, {
+      NIGHTSHIFT_AUTONOMOUS: '1',
+      NIGHTSHIFT_CLAUDE_CMD: missingClaude
+    });
+    assert.equal(res.status, 0, res.stderr);
+
+    await waitFor(async () => {
+      const events = await readEvents(project);
+      return events.find(event =>
+        event.action === 'session.halted' &&
+        event.payload?.reason === 'pinger_spawn_failed'
+      );
+    });
+
+    await waitFor(async () => {
+      try {
+        await fs.access(claimPath(project, handoff));
+        return false;
+      } catch (err) {
+        if (err.code === 'ENOENT') return true;
+        throw err;
+      }
+    });
+  } finally {
+    await fs.rm(project, { recursive: true, force: true });
+  }
+});
+
+test('F-G: malformed wave.handoff payload with empty next_manifest does not spawn and logs a warning', async () => {
+  const { binDir, claudePath, recordPath } = await setupFakeClaude();
+  const project = await bootstrapProject();
+
+  try {
+    const handoff = await writeHandoff(project);
+    await writeManifest(project, 2);
+    await fs.writeFile(
+      path.join(project, 'tasks', 'events.ndjson'),
+      acceptedWaveFixture({
+        extraEvents: [waveHandoffEvent(handoff, { payload: { next_manifest: '' } })]
+      }).map(event => JSON.stringify(event)).join('\n') + '\n',
+      'utf8'
+    );
+
+    const res = runHealthPing(project, {
+      NIGHTSHIFT_AUTONOMOUS: '1',
+      NIGHTSHIFT_CLAUDE_CMD: claudePath
+    });
+    assert.equal(res.status, 0, res.stderr);
+    await assertNoSpawn(recordPath);
+    assert.match(res.stderr, /wave\.handoff missing required payload fields/);
+  } finally {
+    await fs.rm(project, { recursive: true, force: true });
+    await fs.rm(binDir, { recursive: true, force: true });
+  }
+});
+
 test('F-H: no wave.handoff event falls through to the existing no-work path', async () => {
   const { binDir, claudePath, recordPath } = await setupFakeClaude();
   const project = await bootstrapProject(acceptedWaveFixture());
@@ -444,6 +632,179 @@ test('F-I: resurrect-fresh is gated behind NIGHTSHIFT_AUTONOMOUS=1', async () =>
   }
 });
 
+test('F-J: claim key stays stable across handoff re-emits with different tokens', async () => {
+  const { binDir, claudePath, recordPath } = await setupFakeClaude();
+  const project = await bootstrapProject();
+
+  try {
+    const firstHandoff = await writeHandoff(project, { handoffToken: 'handoff-token-a' });
+    await writeManifest(project, 2);
+    await fs.writeFile(
+      path.join(project, 'tasks', 'events.ndjson'),
+      acceptedWaveFixture({ extraEvents: [waveHandoffEvent(firstHandoff)] })
+        .map(event => JSON.stringify(event)).join('\n') + '\n',
+      'utf8'
+    );
+
+    const firstRun = runHealthPing(project, {
+      NIGHTSHIFT_AUTONOMOUS: '1',
+      NIGHTSHIFT_CLAUDE_CMD: claudePath
+    });
+    assert.equal(firstRun.status, 0, firstRun.stderr);
+    await assertFreshSpawn(recordPath, 2);
+
+    const secondHandoff = await writeHandoff(project, { handoffToken: 'handoff-token-b' });
+    const existingEvents = await readEvents(project);
+    await fs.writeFile(
+      path.join(project, 'tasks', 'events.ndjson'),
+      [
+        ...existingEvents,
+        waveHandoffEvent(secondHandoff, { event_id: 'ev_01HXYZ000000000000000H17' })
+      ].map(event => JSON.stringify(event)).join('\n') + '\n',
+      'utf8'
+    );
+
+    const secondRun = runHealthPing(project, {
+      NIGHTSHIFT_AUTONOMOUS: '1',
+      NIGHTSHIFT_CLAUDE_CMD: claudePath
+    });
+    assert.equal(secondRun.status, 0, secondRun.stderr);
+
+    const records = await readRecords(recordPath);
+    assert.equal(records.length, 1, 'expected the existing claim to suppress a second spawn');
+    assert.ok(await fs.readFile(claimPath(project, firstHandoff), 'utf8'), 'expected stable claim path');
+  } finally {
+    await fs.rm(project, { recursive: true, force: true });
+    await fs.rm(binDir, { recursive: true, force: true });
+  }
+});
+
+test('F-K: stale-claim recovery requires dead pid, old claim age, and no recent stale-session activity', async () => {
+  const staleAgeMs = (2 * 60 * 60 * 1000) + 5_000;
+
+  async function deadPid() {
+    const child = spawn('node', ['-e', 'setTimeout(() => process.exit(0), 10)']);
+    const pid = child.pid;
+    await new Promise(resolve => child.on('close', resolve));
+    return pid;
+  }
+
+  async function makeProject(label) {
+    const fake = await setupFakeClaude();
+    const project = await bootstrapProject();
+    const handoff = await writeHandoff(project, { handoffToken: `${label}-token` });
+    await writeManifest(project, 2);
+    await fs.writeFile(
+      path.join(project, 'tasks', 'events.ndjson'),
+      acceptedWaveFixture({ extraEvents: [waveHandoffEvent(handoff)] })
+        .map(event => JSON.stringify(event)).join('\n') + '\n',
+      'utf8'
+    );
+    return { ...fake, project, handoff };
+  }
+
+  const positive = await makeProject('positive');
+  try {
+    const stalePid = await deadPid();
+    await writeClaim(positive.project, positive.handoff, {
+      new_session_id: 'sess_01HXYZSTALE000000000001',
+      pid: stalePid
+    }, staleAgeMs);
+
+    const res = runHealthPing(positive.project, {
+      NIGHTSHIFT_AUTONOMOUS: '1',
+      NIGHTSHIFT_CLAUDE_CMD: positive.claudePath
+    });
+    assert.equal(res.status, 0, res.stderr);
+    await assertFreshSpawn(positive.recordPath, 2);
+
+    const halted = await waitFor(async () => {
+      const events = await readEvents(positive.project);
+      return events.find(event =>
+        event.action === 'session.halted' &&
+        event.payload?.reason === 'stale_claim_recovered'
+      );
+    });
+    assert.equal(halted.payload?.stale_pid, stalePid);
+    assert.equal(halted.payload?.stale_session_id, 'sess_01HXYZSTALE000000000001');
+  } finally {
+    await fs.rm(positive.project, { recursive: true, force: true });
+    await fs.rm(positive.binDir, { recursive: true, force: true });
+  }
+
+  const alive = await makeProject('alive');
+  const liveChild = spawn('node', ['-e', 'setTimeout(() => process.exit(0), 5000)'], { stdio: 'ignore' });
+  try {
+    await writeClaim(alive.project, alive.handoff, {
+      new_session_id: 'sess_01HXYZLIVE0000000000001',
+      pid: liveChild.pid
+    }, staleAgeMs);
+    const res = runHealthPing(alive.project, {
+      NIGHTSHIFT_AUTONOMOUS: '1',
+      NIGHTSHIFT_CLAUDE_CMD: alive.claudePath
+    });
+    assert.equal(res.status, 0, res.stderr);
+    await assertNoSpawn(alive.recordPath);
+    assert.ok(await fs.readFile(claimPath(alive.project, alive.handoff), 'utf8'));
+  } finally {
+    try { liveChild.kill('SIGKILL'); } catch {}
+    await fs.rm(alive.project, { recursive: true, force: true });
+    await fs.rm(alive.binDir, { recursive: true, force: true });
+  }
+
+  const fresh = await makeProject('fresh');
+  try {
+    await writeClaim(fresh.project, fresh.handoff, {
+      new_session_id: 'sess_01HXYZFRESH00000000001',
+      pid: await deadPid()
+    }, 60_000);
+    const res = runHealthPing(fresh.project, {
+      NIGHTSHIFT_AUTONOMOUS: '1',
+      NIGHTSHIFT_CLAUDE_CMD: fresh.claudePath
+    });
+    assert.equal(res.status, 0, res.stderr);
+    await assertNoSpawn(fresh.recordPath);
+    assert.ok(await fs.readFile(claimPath(fresh.project, fresh.handoff), 'utf8'));
+  } finally {
+    await fs.rm(fresh.project, { recursive: true, force: true });
+    await fs.rm(fresh.binDir, { recursive: true, force: true });
+  }
+
+  const recent = await makeProject('recent');
+  try {
+    const recentEvents = [
+      ...await readEvents(recent.project),
+      makeEvent('task.accepted', {
+        event_id: 'ev_01HXYZ000000000000000REC',
+        ts: new Date().toISOString(),
+        session_id: 'sess_01HXYZRECENT0000000001',
+        wave: 2,
+        task_id: 'TASK_RECENT_001'
+      })
+    ];
+    await fs.writeFile(
+      path.join(recent.project, 'tasks', 'events.ndjson'),
+      recentEvents.map(event => JSON.stringify(event)).join('\n') + '\n',
+      'utf8'
+    );
+    await writeClaim(recent.project, recent.handoff, {
+      new_session_id: 'sess_01HXYZRECENT0000000001',
+      pid: await deadPid()
+    }, staleAgeMs);
+
+    const res = runHealthPing(recent.project, {
+      NIGHTSHIFT_AUTONOMOUS: '1',
+      NIGHTSHIFT_CLAUDE_CMD: recent.claudePath
+    });
+    assert.equal(res.status, 0, res.stderr);
+    await assertNoSpawn(recent.recordPath);
+    assert.ok(await fs.readFile(claimPath(recent.project, recent.handoff), 'utf8'));
+  } finally {
+    await fs.rm(recent.project, { recursive: true, force: true });
+    await fs.rm(recent.binDir, { recursive: true, force: true });
+  }
+});
+
 test('F-L: orphan handoff file emits a repaired wave.handoff event', async () => {
   const { binDir, claudePath, recordPath } = await setupFakeClaude();
   const project = await bootstrapProject(acceptedWaveFixture());
@@ -466,6 +827,78 @@ test('F-L: orphan handoff file emits a repaired wave.handoff event', async () =>
     assert.ok(repaired, 'expected repaired wave.handoff');
     assert.equal(repaired.payload?.handoff_path, handoff.handoffRelPath);
     assert.equal(repaired.payload?.next_manifest, 'tasks/waves/2/manifest.yaml');
+  } finally {
+    await fs.rm(project, { recursive: true, force: true });
+    await fs.rm(binDir, { recursive: true, force: true });
+  }
+});
+
+test('F-M: NIGHTSHIFT_SESSION_ID propagates into the fresh claude environment', async () => {
+  const { binDir, claudePath, recordPath } = await setupFakeClaude({ writeDispatchEvent: true });
+  const project = await bootstrapProject();
+
+  try {
+    const handoff = await writeHandoff(project);
+    await writeManifest(project, 2);
+    await fs.writeFile(
+      path.join(project, 'tasks', 'events.ndjson'),
+      acceptedWaveFixture({ extraEvents: [waveHandoffEvent(handoff)] })
+        .map(event => JSON.stringify(event)).join('\n') + '\n',
+      'utf8'
+    );
+
+    const res = runHealthPing(project, {
+      NIGHTSHIFT_AUTONOMOUS: '1',
+      NIGHTSHIFT_CLAUDE_CMD: claudePath
+    });
+    assert.equal(res.status, 0, res.stderr);
+
+    const record = await assertFreshSpawn(recordPath, 2);
+    const dispatched = await waitFor(async () => {
+      const events = await readEvents(project);
+      return events.find(event => event.agent === 'fake-claude' && event.action === 'task.dispatched');
+    });
+    const claim = JSON.parse(await fs.readFile(claimPath(project, handoff), 'utf8'));
+    assert.equal(dispatched.session_id, claim.new_session_id);
+    assert.equal(record.env.NIGHTSHIFT_SESSION_ID, claim.new_session_id);
+  } finally {
+    await fs.rm(project, { recursive: true, force: true });
+    await fs.rm(binDir, { recursive: true, force: true });
+  }
+});
+
+test('F-N: a fresh claim suppresses double-spawn even after the child exits before dispatching work', async () => {
+  const { binDir, claudePath, recordPath } = await setupFakeClaude({ sleepMs: 1000 });
+  const project = await bootstrapProject();
+
+  try {
+    const handoff = await writeHandoff(project);
+    await writeManifest(project, 2);
+    await fs.writeFile(
+      path.join(project, 'tasks', 'events.ndjson'),
+      acceptedWaveFixture({ extraEvents: [waveHandoffEvent(handoff)] })
+        .map(event => JSON.stringify(event)).join('\n') + '\n',
+      'utf8'
+    );
+
+    const firstRun = runHealthPing(project, {
+      NIGHTSHIFT_AUTONOMOUS: '1',
+      NIGHTSHIFT_CLAUDE_CMD: claudePath
+    });
+    assert.equal(firstRun.status, 0, firstRun.stderr);
+    await assertFreshSpawn(recordPath, 2);
+
+    await new Promise(resolve => setTimeout(resolve, 1200));
+
+    const secondRun = runHealthPing(project, {
+      NIGHTSHIFT_AUTONOMOUS: '1',
+      NIGHTSHIFT_CLAUDE_CMD: claudePath
+    });
+    assert.equal(secondRun.status, 0, secondRun.stderr);
+
+    const records = await readRecords(recordPath);
+    assert.equal(records.length, 1, 'expected the fresh claim to keep the retry idempotent');
+    assert.ok(await fs.readFile(claimPath(project, handoff), 'utf8'));
   } finally {
     await fs.rm(project, { recursive: true, force: true });
     await fs.rm(binDir, { recursive: true, force: true });
@@ -535,6 +968,58 @@ test('F-R: handoff file and event payload mismatches refuse to spawn', async () 
     assert.equal(res.status, 0, res.stderr);
     await assertNoSpawn(recordPath);
     assert.match(res.stderr, /handoff file\/event mismatch on: next_wave/);
+  } finally {
+    await fs.rm(project, { recursive: true, force: true });
+    await fs.rm(binDir, { recursive: true, force: true });
+  }
+});
+
+
+test('F-K-negative: fresh claim (<2h old) is NOT recovered even if pid dead', async () => {
+  // Even with a dead pid, if the claim is only minutes old, we
+  // refuse to recover — pin the three-AND gate semantics.
+  const { binDir, claudePath, recordPath } = await setupFakeClaude();
+  const project = await bootstrapProject();
+  try {
+    const handoff = await writeHandoff(project);
+    await writeManifest(project, 2);
+    const events = acceptedWaveFixture({ extraEvents: [waveHandoffEvent(handoff)] });
+    await fs.writeFile(
+      path.join(project, 'tasks', 'events.ndjson'),
+      events.map(e => JSON.stringify(e)).join('\n') + '\n',
+      'utf8'
+    );
+
+    // Fresh (current mtime) stale-pid claim.
+    const claimFile = claimPath(project, handoff);
+    await fs.mkdir(path.dirname(claimFile), { recursive: true });
+    await fs.writeFile(claimFile, JSON.stringify({
+      claim_key: path.basename(claimFile).replace(/^wave-claim-/, ''),
+      handoff_token: handoff.handoffToken,
+      triggering_handoff: 'ev_01HXYZ000000000000000H16',
+      source_wave: 1, next_wave: 2,
+      new_session_id: 'sess_01FRESH000000000000FRESH',
+      pid: 999999,
+      created_at: new Date().toISOString()
+    }, null, 2));
+    // mtime stays current (now).
+
+    const res = runHealthPing(project, {
+      NIGHTSHIFT_AUTONOMOUS: '1',
+      NIGHTSHIFT_CLAUDE_CMD: claudePath
+    });
+    assert.equal(res.status, 0, res.stderr);
+    await assertNoSpawn(recordPath);
+
+    // Claim MUST still be present (no recovery).
+    const claimExists = await fs.access(claimFile).then(() => true, () => false);
+    assert.equal(claimExists, true, 'fresh claim must not be removed');
+
+    const eventsAfter = await readEvents(project);
+    const recovered = eventsAfter.find(e =>
+      e.action === 'session.halted' && e.payload?.reason === 'stale_claim_recovered'
+    );
+    assert.equal(recovered, undefined, 'fresh claim must NOT emit stale_claim_recovered');
   } finally {
     await fs.rm(project, { recursive: true, force: true });
     await fs.rm(binDir, { recursive: true, force: true });

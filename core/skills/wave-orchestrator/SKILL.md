@@ -171,6 +171,34 @@ accumulation per wave.
    env is what gates autonomous resurrection, not skill-side logic.
    Just write the handoff + event and let your turn end naturally.
 
+### Parser strictness
+
+`parseHandoff()` strict-rejects the handoff file if any of these
+conditions hold:
+- Any of the 6 required H2 sections is missing
+- Sections are out of order
+- Any H2 heading appears more than once
+- The `Machine fields` section is missing any required subfield:
+  `source_wave`, `next_wave`, `source_session_id`, `handoff_token`
+- `source_wave` or `next_wave` is not parseable as an integer
+
+The pinger calls `parseHandoff()` BEFORE spawning the next-wave
+session, so malformed handoff files stop at validation instead of
+creating a bad resurrection.
+
+If the pinger is not installed on Darwin, also append a recovery note
+to `tasks/paused.md` so the user can trigger the next wave manually in
+the morning:
+- `cd <project> && claude "/nightshift:implement --wave=<N+1>"`
+
+Use the blessed launchd surface for operator guidance:
+- `nightshift launchd status`
+- `nightshift launchd install --project <path>`
+
+Do NOT pre-emptively start wave `N+1` yourself. The orchestrator only
+writes the handoff + event. Starting the next wave is the pinger's job
+(or the user's, via the recovery command above).
+
 If no next wave manifest exists (this was the last wave), skip
 handoff entirely — orchestrator emits `session.end` per existing
 flow.

@@ -3,7 +3,16 @@
 # Exits 0 if the project is safe to run overnight; non-zero with diagnostics otherwise.
 set -uo pipefail
 
-target="${1:-$PWD}"
+require_launchd=0
+positional=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --require-launchd) require_launchd=1; shift ;;
+    *) positional+=("$1"); shift ;;
+  esac
+done
+
+target="${positional[0]:-$PWD}"
 cd "$target"
 
 ok=0
@@ -46,10 +55,62 @@ else check_warn "codex CLI not installed — implementer will degrade to Claude-
 
 # 7. launchd plists loaded (macOS)
 if [ "$(uname)" = "Darwin" ]; then
-  if launchctl list 2>/dev/null | grep -q ai.nightshift.pinger; then check_ok "pinger launchd agent loaded"
-  else check_warn "pinger launchd agent not loaded — overnight safety off"; fi
+  if launchctl list 2>/dev/null | grep -q ai.nightshift.pinger; then
+    check_ok "pinger launchd agent loaded"
+  elif [ "$require_launchd" = "1" ]; then
+    check_fail "launchd pinger not loaded — run nightshift launchd install --project $target"
+    echo "nightshift launchd install --project $target" >&2
+  else
+    check_warn "launchd pinger not loaded — optional, needed only for overnight runs"
+  fi
 else
-  check_warn "non-Darwin system — launchd safety disabled"
+  if [ "$require_launchd" = "1" ]; then
+    check_fail "--require-launchd specified but system is not Darwin"
+  else
+    check_warn "non-Darwin system — launchd safety disabled"
+  fi
+fi
+
+# 7b. Hotfix-3 H16: if a recent wave.handoff exists, derive the
+# claim filename the pinger would use and warn when no claim exists
+# and no task.dispatched has landed for the next wave yet.
+if [ -f tasks/events.ndjson ] && command -v node >/dev/null 2>&1; then
+  handoff_info="$(
+    node -e '
+      const fs = require("node:fs");
+      const logPath = process.argv[1];
+      let raw = "";
+      try {
+        raw = fs.readFileSync(logPath, "utf8").trim();
+      } catch {
+        process.exit(0);
+      }
+      if (!raw) process.exit(0);
+      const events = raw.split("\n").filter(Boolean).map(line => JSON.parse(line));
+      const handoff = [...events].reverse().find(event => event.action === "wave.handoff");
+      if (!handoff) process.exit(0);
+      const payload = handoff.payload || {};
+      const sw = payload.source_wave;
+      const nw = payload.next_wave;
+      const nm = payload.next_manifest;
+      if (sw == null || nw == null || typeof nm !== "string" || nm.length === 0) process.exit(0);
+      const dispatched = events.some(event =>
+        event.action === "task.dispatched" && Number(event.wave) === Number(nw)
+      );
+      if (dispatched) process.exit(0);
+      process.stdout.write(`${sw}\t${nw}\t${nm}`);
+    ' tasks/events.ndjson 2>/dev/null
+  )"
+  if [ -n "$handoff_info" ]; then
+    IFS=$'\t' read -r SW NW NM <<EOF
+$handoff_info
+EOF
+    KEY=$(printf '%s:%s:%s' "$SW" "$NW" "$NM" | shasum -a 256 | head -c 16)
+    CLAIM_FILE=".nightshift/wave-claim-${KEY}"
+    if [ ! -f "$CLAIM_FILE" ]; then
+      check_warn "wave $NW handoff is waiting; pinger should resurrect within 30 min, or run \`/nightshift:implement --wave=$NW\` manually."
+    fi
+  fi
 fi
 
 # 8. questions.md resolved
