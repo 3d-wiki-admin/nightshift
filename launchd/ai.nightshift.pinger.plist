@@ -25,6 +25,8 @@
     <string>__NIGHTSHIFT_HOME__</string>
     <key>NIGHTSHIFT_ACTIVE_PROJECT</key>
     <string>__NIGHTSHIFT_ACTIVE_PROJECT__</string>
+    <key>NIGHTSHIFT_AUTONOMOUS</key>
+    <string>1</string>
     <key>PATH</key>
     <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
   </dict>

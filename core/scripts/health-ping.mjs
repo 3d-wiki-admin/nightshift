@@ -9,13 +9,16 @@
 
 import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { EventStore, buildState, sessionId } from '../event-store/src/index.mjs';
 import { openQuestions } from '../event-store/src/open-questions.mjs';
 import { appendEvent } from './dispatch.mjs';
+import { parseHandoff } from './wave-handoff.mjs';
 
 const STALE_MIN = 15;
 const FAIL_THRESHOLD = 3;
+const STALE_CLAIM_MS = 2 * 60 * 60 * 1000;
 
 async function main() {
   const projectDir = process.argv[2] || process.env.NIGHTSHIFT_ACTIVE_PROJECT;
@@ -52,6 +55,9 @@ async function main() {
     await maybeNotifyAwaitingHuman(projectDir, openQuestionIds);
     return;
   }
+
+  const resurrected = await detectResurrectFreshOpportunity(projectDir, events);
+  if (resurrected) return;
 
   const now = Date.now();
   await appendEvent(logPath, {
@@ -130,6 +136,196 @@ async function main() {
   await writeFailCounts(projectDir, failCounts);
 }
 
+async function detectResurrectFreshOpportunity(projectDir, events) {
+  if (process.env.NIGHTSHIFT_AUTONOMOUS !== '1') return null;
+
+  const handoff = events.slice().reverse().find(event => event.action === 'wave.handoff');
+  if (!handoff) {
+    await maybeRepairOrphanHandoff(projectDir, events);
+    return null;
+  }
+
+  const {
+    source_wave,
+    next_wave,
+    source_session_id,
+    handoff_token,
+    handoff_path,
+    next_manifest
+  } = handoff.payload || {};
+
+  if (
+    source_wave == null ||
+    next_wave == null ||
+    !source_session_id ||
+    !handoff_token ||
+    !handoff_path ||
+    !next_manifest
+  ) {
+    console.error('[pinger] wave.handoff missing required payload fields; ignoring.');
+    return null;
+  }
+
+  const handoffAbs = path.resolve(projectDir, handoff_path);
+  const nextManifestAbs = path.resolve(projectDir, next_manifest);
+  if (!await pathExists(handoffAbs) || !await pathExists(nextManifestAbs)) {
+    console.error(`[pinger] wave.handoff references missing files — not spawning; handoff_token=${handoff_token}`);
+    return null;
+  }
+
+  let parsed;
+  try {
+    parsed = parseHandoff(await fs.readFile(handoffAbs, 'utf8'));
+  } catch (err) {
+    console.error(`[pinger] handoff file parse failed; not spawning: ${err.message}`);
+    return null;
+  }
+
+  const expectedFields = {
+    source_wave,
+    next_wave,
+    source_session_id,
+    handoff_token
+  };
+  const mismatches = Object.entries(expectedFields)
+    .filter(([key, value]) => parsed.machine_fields[key] !== value)
+    .map(([key]) => key);
+  if (mismatches.length > 0) {
+    console.error(`[pinger] handoff file/event mismatch on: ${mismatches.join(', ')}; not spawning.`);
+    return null;
+  }
+  if (parsed.next_wave_pointer.manifest !== next_manifest) {
+    console.error('[pinger] handoff file next_manifest disagrees with event payload; not spawning.');
+    return null;
+  }
+
+  const alreadyDispatched = events.some(event =>
+    event.action === 'task.dispatched' && Number(event.wave) === Number(next_wave)
+  );
+  if (alreadyDispatched) return null;
+
+  const claimKey = crypto.createHash('sha256')
+    .update(`${source_wave}:${next_wave}:${next_manifest}`)
+    .digest('hex')
+    .slice(0, 16);
+  const claimFile = path.join(projectDir, '.nightshift', `wave-claim-${claimKey}`);
+  const logPath = path.join(projectDir, 'tasks', 'events.ndjson');
+
+  try {
+    const stat = await fs.stat(claimFile);
+    const ageMs = Date.now() - stat.mtimeMs;
+    const claim = JSON.parse(await fs.readFile(claimFile, 'utf8'));
+    const claimPid = claim.pid;
+    const claimSid = claim.new_session_id;
+
+    let pidDead = claimPid == null;
+    if (claimPid != null) {
+      try {
+        process.kill(claimPid, 0);
+        pidDead = false;
+      } catch (err) {
+        if (err?.code === 'ESRCH') {
+          pidDead = true;
+        } else {
+          return null;
+        }
+      }
+    }
+
+    const recentActivity = Boolean(claimSid) && events.some(event =>
+      event.session_id === claimSid &&
+      (Date.now() - new Date(event.ts).getTime()) < STALE_CLAIM_MS
+    );
+
+    if (pidDead && !recentActivity && ageMs > STALE_CLAIM_MS) {
+      await fs.unlink(claimFile);
+      await appendEvent(logPath, {
+        session_id: sessionId(),
+        agent: 'health-pinger',
+        action: 'session.halted',
+        outcome: 'failure',
+        payload: {
+          reason: 'stale_claim_recovered',
+          claim_key: claimKey,
+          stale_pid: claimPid,
+          stale_session_id: claimSid,
+          next_wave,
+          age_ms: ageMs
+        }
+      });
+    } else {
+      return null;
+    }
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+
+  const newSid = sessionId();
+  try {
+    await fs.mkdir(path.dirname(claimFile), { recursive: true });
+    const fh = await fs.open(claimFile, 'wx');
+    await fh.writeFile(JSON.stringify({
+      claim_key: claimKey,
+      handoff_token,
+      triggering_handoff: handoff.event_id,
+      source_wave,
+      next_wave,
+      new_session_id: newSid,
+      pid: null,
+      created_at: new Date().toISOString()
+    }, null, 2));
+    await fh.close();
+  } catch (err) {
+    if (err.code === 'EEXIST') return null;
+    throw err;
+  }
+
+  await appendEvent(logPath, {
+    session_id: newSid,
+    agent: 'system',
+    action: 'session.start',
+    payload: {
+      source: 'pinger-resurrect',
+      triggering_handoff: handoff.event_id,
+      handoff_token,
+      next_wave
+    },
+    notes: `pinger spawning fresh claude -p for wave ${next_wave}`
+  });
+
+  const cli = process.env.NIGHTSHIFT_CLAUDE_CMD || 'claude';
+  const child = spawn(cli, [
+    '-p',
+    '--dangerously-skip-permissions',
+    `/nightshift:implement --wave=${next_wave}`
+  ], {
+    cwd: projectDir,
+    env: { ...process.env, NIGHTSHIFT_SESSION_ID: newSid },
+    stdio: 'ignore',
+    detached: true
+  });
+  child.on('error', (err) => {
+    console.error(`[pinger] claude -p spawn failed: ${err.message}`);
+    appendEvent(logPath, {
+      session_id: newSid,
+      agent: 'system',
+      action: 'session.halted',
+      outcome: 'failure',
+      payload: { reason: 'pinger_spawn_failed', error: err.message }
+    }).catch(() => {});
+    fs.unlink(claimFile).catch(() => {});
+  });
+  child.unref();
+
+  try {
+    const claim = JSON.parse(await fs.readFile(claimFile, 'utf8'));
+    claim.pid = child.pid;
+    await fs.writeFile(claimFile, JSON.stringify(claim, null, 2), 'utf8');
+  } catch {}
+
+  return { handoff_token, new_session_id: newSid, pid: child.pid };
+}
+
 async function attemptUnstick(projectDir) {
   // TZ P0.2: use the real `--continue` flag (the prior `-p /resume` started a
   // fresh headless print session instead of resuming — the unstuck "success"
@@ -204,6 +400,63 @@ async function maybeNotifyAwaitingHuman(projectDir, openQuestionIds) {
     await fs.mkdir(path.dirname(sentinelPath), { recursive: true });
     await fs.writeFile(sentinelPath, key, 'utf8');
   } catch {}
+}
+
+async function maybeRepairOrphanHandoff(projectDir, events) {
+  const wavesDir = path.join(projectDir, 'tasks', 'waves');
+  const waves = await fs.readdir(wavesDir).catch(() => []);
+  const numericDesc = waves
+    .filter(wave => /^\d+$/.test(wave))
+    .map(wave => Number.parseInt(wave, 10))
+    .sort((left, right) => right - left)
+    .map(wave => String(wave));
+
+  for (const wave of numericDesc) {
+    const handoffPath = `tasks/waves/${wave}/handoff-to-next.md`;
+    const handoffAbs = path.join(projectDir, handoffPath);
+    if (!await pathExists(handoffAbs)) continue;
+
+    const hasEvent = events.some(event =>
+      event.action === 'wave.handoff' && event.payload?.handoff_path === handoffPath
+    );
+    if (hasEvent) continue;
+
+    let parsed;
+    try {
+      parsed = parseHandoff(await fs.readFile(handoffAbs, 'utf8'));
+    } catch {
+      console.error(`[pinger] orphan handoff file ${handoffPath} is malformed; skipping repair.`);
+      continue;
+    }
+
+    const machine = parsed.machine_fields;
+    await appendEvent(path.join(projectDir, 'tasks', 'events.ndjson'), {
+      session_id: sessionId(),
+      agent: 'health-pinger',
+      action: 'wave.handoff',
+      outcome: 'success',
+      wave: machine.source_wave,
+      payload: {
+        source_wave: machine.source_wave,
+        next_wave: machine.next_wave,
+        handoff_path: handoffPath,
+        next_manifest: `tasks/waves/${machine.next_wave}/manifest.yaml`,
+        handoff_token: machine.handoff_token,
+        repaired: true,
+        source_session_id: machine.source_session_id
+      }
+    });
+    return;
+  }
+}
+
+async function pathExists(targetPath) {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function readFailCounts(projectDir) {
