@@ -33,15 +33,23 @@ async function bootstrapProject({ taskId = 'E2E_001', wave = 1 } = {}) {
 async function makeFakeCodex({ envDump }) {
   const dir = tmp();
   const bin = path.join(dir, 'codex');
+  // Note: codex-cli 0.121 reads the prompt from stdin (positional arg path
+  // was removed). The fake captures stdin too so tests can assert the prompt
+  // actually travelled through.
   await writeExec(bin, [
     '#!/usr/bin/env bash',
     'set -u',
+    'STDIN_CONTENT=""',
+    'if [ ! -t 0 ]; then',
+    '  STDIN_CONTENT="$(cat)"',
+    'fi',
     `cat > "${envDump}" <<-EOF`,
     'NIGHTSHIFT_TASK_CONTRACT=$NIGHTSHIFT_TASK_CONTRACT',
     'NIGHTSHIFT_CONTEXT_PACK=$NIGHTSHIFT_CONTEXT_PACK',
     'NIGHTSHIFT_CONSTITUTION=$NIGHTSHIFT_CONSTITUTION',
     'NIGHTSHIFT_PROJECT_DIR=$NIGHTSHIFT_PROJECT_DIR',
     'ARGV=$*',
+    'STDIN_BYTES=${#STDIN_CONTENT}',
     'EOF',
     'echo "{\\"event\\":\\"usage\\",\\"usage\\":{\\"input_tokens\\":7,\\"output_tokens\\":3}}"',
     'exit 0'
@@ -86,8 +94,12 @@ test('dispatch.mjs codex propagates NIGHTSHIFT_* env to the spawned codex proces
   assert.match(dump, new RegExp(`NIGHTSHIFT_PROJECT_DIR=${project}`));
   // codex received model + effort + prompt in argv:
   assert.match(dump, /--model gpt-5\.3-codex/);
-  assert.match(dump, /--reasoning-effort high/);
-  assert.match(dump, /--prompt/);
+  // codex-cli 0.121 syntax: `-c model_reasoning_effort=<value>` instead of
+  // `--reasoning-effort <value>`, and prompt goes via stdin (not `--prompt`).
+  assert.match(dump, /-c model_reasoning_effort="high"/);
+  assert.match(dump, /--skip-git-repo-check/);
+  // Prompt reached codex via stdin (non-zero byte count).
+  assert.match(dump, /STDIN_BYTES=[1-9]\d*/);
 
   // dispatch wrote task.routed + task.dispatched + task.implemented events:
   const events = await new EventStore(path.join(project, 'tasks', 'events.ndjson')).all();

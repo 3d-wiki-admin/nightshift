@@ -167,13 +167,29 @@ export async function runCodex(opts = {}) {
     throw new CodexError('codex CLI not on PATH', { code: 'ABSENT' });
   }
 
+  // Codex-CLI 0.121 changed the exec flag surface (caught live on
+  // kw-injector-v1 overnight run, inc_5e1cac10d617):
+  //   - `--reasoning-effort <level>`  removed → use `-c model_reasoning_effort=<level>`
+  //   - `--prompt <file>`             removed → prompt is positional or stdin
+  //   - `--skip-git-repo-check`       added  → required when cwd is a subdir of a repo
+  // We read the prompt file and pipe it to stdin — positional arg would
+  // blow up argv length for prompts > a few KB.
   const args = [
     'exec',
     '--json',
     '--model', model,
-    ...(effort && effort !== 'default' ? ['--reasoning-effort', effort] : []),
-    ...(promptPath ? ['--prompt', promptPath] : [])
+    '--skip-git-repo-check',
+    ...(effort && effort !== 'default'
+      ? ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`]
+      : [])
   ];
+  let stdinContent = null;
+  if (promptPath) {
+    try { stdinContent = await fs.readFile(promptPath, 'utf8'); }
+    catch (err) {
+      throw new CodexError(`runCodex: prompt file unreadable at ${promptPath}: ${err.message}`, { code: 'SPAWN_FAILED' });
+    }
+  }
 
   const started = Date.now();
   return await new Promise((resolve, reject) => {
@@ -185,12 +201,19 @@ export async function runCodex(opts = {}) {
       child = spawn(codexBin, args, {
         cwd,
         env: { ...process.env, ...env },
-        stdio: ['ignore', 'pipe', 'pipe'],
+        // Open stdin only if we have a prompt to pipe; otherwise ignore it so
+        // codex doesn't wait on stdin (it will if stdio[0] is 'pipe').
+        stdio: [stdinContent !== null ? 'pipe' : 'ignore', 'pipe', 'pipe'],
         detached: true
       });
     } catch (err) {
       reject(new CodexError(`spawn failed: ${err.message}`, { code: 'SPAWN_FAILED' }));
       return;
+    }
+
+    if (stdinContent !== null) {
+      child.stdin.on('error', () => { /* tolerate EPIPE if codex exits early */ });
+      child.stdin.end(stdinContent);
     }
 
     let stdout = '';
