@@ -313,6 +313,88 @@ wave.reviewed) тонут. Для анализа приходится фильт
   корректные проценты, counts, и обнаруживает неотвеченные questions
 - Slash-команда `/nightshift:status` возвращает dashboard (не raw CLI output)
 
+## H12. Token-aware self-preservation + auto-install launchd pinger
+
+### Запрос
+Пользователь во время ночного прогона увидел в Claude Max UI «20% токенов осталось
+на час» и спросил: что будет если Claude умрёт от лимита посреди волны?
+
+Сейчас ответ: `session.end` / `session.halted` event (если doc-syncer успеет написать)
+→ полная остановка. Если `launchd` пингер НЕ установлен — никто не разбудит Claude
+когда лимиты обновятся (5-часовой цикл у Max). Работа стоит до утра / до ручного
+возобновления.
+
+### Часть 1 (простая, P1) — auto-install launchd pinger при `confirm-scaffold`
+
+Сейчас `scaffold` создаёт проект, но launchd-пингер требует отдельного шага
+`nightshift launchd install --project <path>`. В интерактивной документации я
+(Claude) напоминаю пользователю, и слишком часто получаю «skip» — потому что
+пользователь не понимает что это overnight safety net.
+
+**Fix:**
+- В `claude/commands/nightshift.md` (секция `confirm-scaffold`, шаг 4) сделать
+  вопрос обязательным (не опциональным), с дефолтом **yes**. Прямо: «установить
+  overnight-пингер? [Y/n]» — не «хочешь ли опционально».
+- На Darwin: если ответ не-N — запустить `nightshift launchd install --project <path>`
+  прямо из scaffold flow, не перекладывая на пользователя.
+- На не-Darwin: пропустить с пометкой «Linux/Windows: поставьте cron эквивалент
+  из docs/OVERNIGHT.md» (H12.1 → написать этот doc).
+
+Регрессионный тест: scaffold с подтверждением → `launchctl list | grep ai.nightshift.pinger`
+должно вернуть запись (на Darwin).
+
+### Часть 2 (сложная, P2) — token-pressure handoff
+
+**Проблема.** Claude Code не экспонирует остаток токенов внутрь модели во время
+turn'а. Модель не знает сколько у неё осталось. Значит «успеть поставить таймер
+за 1-2%» через обычный ход не работает — в момент когда лимит близко, Claude
+уже либо продолжает, либо падает с 429.
+
+**Что можно сделать на уровне плагина (реализуемо):**
+
+а) **Pre-emptive handoff note в каждом `task.reviewed`-событии.** Когда
+orchestrator принимает задачу, он пишет HANDOFF.md в репо проекта с ровно
+одной строкой: «если ты — свежий Claude в этом же cwd и видишь этот файл,
+это значит предыдущая сессия упала; запусти `/nightshift:resume` и продолжи с
+последнего `task.accepted`». HANDOFF.md пишет orchestrator при КАЖДОМ
+принятии задачи, перезаписывая (не appending). Если Claude умрёт между
+принятыми задачами — launchd-пингер поднимает `claude --continue` → Claude
+читает cwd/HANDOFF.md → понимает что делать.
+
+b) **Budget sentinel event.** Claude Code SDK / env переменные могут
+экспонировать token-budget (`ANTHROPIC_BUDGET_REMAINING`?) — если это
+доступно, orchestrator перед каждым task-dispatch проверяет и при
+`remaining < 5%` пишет `budget.exceeded` event (схема уже поддерживает),
+перестаёт брать новые задачи, дожидается уже-in-flight, пишет
+`session.halted` и корректно выходит. launchd-пингер через 30+ мин
+(когда лимиты обновятся) возобновит. Требует подтверждения что
+`ANTHROPIC_BUDGET_REMAINING` реально доступно из плагина; если нет —
+часть (b) в Claude Code невозможна и остаётся только (a).
+
+c) **Codex-native implementer фолбек.** Если Claude-токены всё, но
+Codex-токены целы — implementer продолжает. Reviewer требует НЕ-Claude
+модель. Сейчас reviewer захардкожен на `claude-opus-4.7`. Разрешить
+`reviewer_model: gpt-5.4` как фолбек когда anthropic.budget.exceeded
+(требует изменения в router.mjs + новый decision.recorded kind).
+
+### Acceptance (Часть 1 сразу, Часть 2 отдельным релизом)
+- `confirm-scaffold` prompt дефолтит на «yes» для launchd install
+- Scaffold на Darwin реально ставит pinger без доп. шагов
+- `HANDOFF.md` в корне проекта — single-line auto-refreshed pointer для
+  resume
+- Регрессионные тесты в `core/scripts/test/fixbatch-launchd-autoinstall.test.mjs`
+  + `fixbatch-handoff-pointer.test.mjs`
+
+### Что НЕ фиксит (честно)
+- Если пользователь закроет ноут (full sleep) — launchd тоже спит. Нужен
+  `caffeinate -i &` как мы уже делаем, или «Prevent automatic sleeping when
+  display is off» в System Settings → Battery. Pinger ничему не поможет если
+  OS приостановлена.
+- OpenAI Codex лимиты — отдельный бюджет, мы не контролируем. Max-план у
+  OpenAI даёт много, но если реально исчерпано — implementer упадёт. Router
+  уже обрабатывает RATE_LIMITED с backoff, в пределе — `task.blocked` и
+  пользователь решает утром.
+
 ## Priority
 - **H1** (namespace split) — P0, блокирует первый live-запуск без шпаргалки
 - **H5** (README plugin install) — P0, те же грабли наступит каждый новый пользователь
@@ -325,6 +407,7 @@ wave.reviewed) тонут. Для анализа приходится фильт
 - **H9** (skill subagents не пишут model) — P1, критично для honest cost accounting
 - **H10** (session.end флуд) — P2, шум но не блокер
 - **H11** (rich status dashboard) — P1, живой monitoring overnight — пользовательская просьба
+- **H12** (auto-install launchd + token handoff) — P1 часть-1 (launchd default-yes), P2 часть-2 (budget sentinel)
 
 ## Acceptance
 - Новый пользователь на чистой Mac может пройти `clone → install.sh → /plugin install →
