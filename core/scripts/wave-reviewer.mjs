@@ -88,24 +88,34 @@ async function launch(project, wave) {
   const logFile = path.join(dir, '.review.log');
   const pidFile = path.join(dir, '.review.pid');
 
+  // codex-cli 0.121: prompt is read from stdin (or positional). Old --prompt flag
+  // was removed. Working dir flag is -C. --skip-git-repo-check is required when
+  // the target isn't a git repo (wave dirs are — but keep it for parity with client.mjs).
+  // -c model_reasoning_effort=high per spec §6.1 (adversarial wave reviewer).
   const args = [
     'exec',
     '--json',
     '--model', REVIEW_MODEL,
-    '--prompt', promptPath,
-    '--cwd', project,
-    '--output', outFile
+    '-c', 'model_reasoning_effort=high',
+    '-C', project,
+    '--skip-git-repo-check'
   ];
 
+  // Write the combined stdout stream to outFile (the wave-review.md artefact) and
+  // mirror to logFile for debugging. Prompt is fed via stdin from the promptPath file.
+  const outStream = (await fs.open(outFile, 'w')).createWriteStream();
+  const logStream = (await fs.open(logFile, 'a')).createWriteStream();
+  const promptFd = await fs.open(promptPath, 'r');
+
   const child = spawn('codex', args, {
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: [promptFd.fd, 'pipe', 'pipe'],
     env: { ...process.env, NIGHTSHIFT_WAVE_REVIEW: '1' },
     detached: true
   });
   await fs.writeFile(pidFile, String(child.pid), 'utf8');
-  const stream = (await fs.open(logFile, 'a')).createWriteStream();
-  child.stdout.pipe(stream);
-  child.stderr.pipe(stream);
+  child.stdout.pipe(outStream);
+  child.stdout.pipe(logStream);
+  child.stderr.pipe(logStream);
   child.unref();
 
   const logPath = path.join(project, 'tasks', 'events.ndjson');
