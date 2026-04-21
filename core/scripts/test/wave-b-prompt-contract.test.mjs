@@ -41,13 +41,15 @@ test('intake-interview agent explicitly forbids creating files under memory/, ta
   assert.match(md, /NEVER call `nightshift scaffold` directly/);
 });
 
-// README must document the v1.1 idea-first flow.
-test('README documents the v1.1 flow: nightshift init → /nightshift intake → /nightshift confirm-scaffold → /plan', async () => {
+// README must document the v1.1 idea-first flow. Claude Code 2.1.x namespaces
+// plugin commands under `/<plugin>:<command>`, so the README references take
+// the namespaced form now (see hotfix H1).
+test('README documents the v1.1 flow: nightshift init → /nightshift:nightshift intake → confirm-scaffold → /nightshift:plan', async () => {
   const md = await read('README.md');
   assert.match(md, /nightshift init/);
-  assert.match(md, /\/nightshift intake/);
-  assert.match(md, /\/nightshift confirm-scaffold/);
-  assert.match(md, /\/plan/);
+  assert.match(md, /\/nightshift:nightshift intake/);
+  assert.match(md, /\/nightshift:nightshift confirm-scaffold/);
+  assert.match(md, /\/nightshift:plan/);
   // Install docs must use --link-bin.
   assert.match(md, /install\.sh --link-bin/);
 });
