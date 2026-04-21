@@ -210,6 +210,63 @@ Next.js+Supabase, игнорируя Python-требования.
 Регрессионный тест: `core/scripts/test/hotfix-dynamic-scaffold-surface.test.mjs` —
 9 сценариев (монорепо, Python-only, Next-only), пинят каждый render output.
 
+## H9. Skill-субагенты не пишут `model` в events.ndjson — стоимость не посчитаешь
+
+### Симптом (нашли на kw-injector-v1 live-запуске)
+Когда `/nightshift:plan` спавнит `plan-writer` subagent (112k токенов, 15 мин), или
+`/nightshift:analyze` спавнит `analyzer` (87k токенов, 5 мин) — ни одно их событие в
+`tasks/events.ndjson` не содержит поле `model`. Все 23 `decision.recorded` + 7
+`question.asked` + 1 `wave.reviewed` — без указания чьего ума дело.
+
+Последствие: post-factum нельзя сказать сколько стоил конкретный plan-writer run
+(был он на Opus или на Sonnet), сколько стоил analyzer, куда ушли деньги за ночь.
+Только ручной подсчёт по Claude Code UI в момент работы.
+
+Для `task.dispatched` / `task.implemented` событий через `core/scripts/dispatch.mjs`
+модель-ид пишется (см. `payload.model`). Но skill-вызовы идут не через dispatch.mjs,
+а через plugin-хуки Claude Code напрямую — минуя нашу инструментацию.
+
+### Fix (две части)
+1. В `claude/hooks/pre-task-preflight.sh` (или новом хуке `pre-subagent.sh`) при
+   входе в `Task` tool: читать `hookSpecificOutput.agent_name` + `model`, писать
+   событие `task.dispatched` с `payload.agent = <skill-name>` + `payload.model = <id>`
+   через `nightshift dispatch append`. В `post-subagent.sh` — писать `task.implemented`
+   с `tokens.input/output/cached` + `duration_ms`.
+2. Схема `event.schema.json` уже поддерживает поле `model` на верхнем уровне и
+   `tokens` с input/output/cached. Ничего добавлять не надо — только начать их
+   реально заполнять для skill-субагентов.
+
+Регрессионный тест: запустить `/nightshift:plan` на тестовом проекте, ассертить что
+в events.ndjson минимум одно событие `task.dispatched` с `agent == 'plan-writer'`
+и `model` не null.
+
+## H10. `session.end` флудит events.ndjson — 27% событий это shutdown-сообщения
+
+### Симптом (тот же live-запуск)
+48 событий всего, из них 13 — `session.end`. Это Stop-хук `checkpoint.sh`, который
+пишет `session.end` на каждый завершённый ход пользователя. В интерактивной сессии
+это означает одно событие на каждый юзер-ход, даже если полезной работы в этом ходе
+не было (юзер просто задал уточняющий вопрос).
+
+Последствие: лог шумит, полезные события (decision.recorded, question.asked,
+wave.reviewed) тонут. Для анализа приходится фильтровать.
+
+### Fix
+В `claude/hooks/checkpoint.sh`: перед записью `session.end` проверять, было ли
+хоть одно не-session событие с предыдущего `session.end` в том же session_id.
+Если не было — skip (не пишем вторую/третью/четвёртую холостую session.end).
+Это dedupe'ит флуд, но сохраняет одно `session.end` на фактический «конец
+работы в session».
+
+Альтернатива (проще): писать `session.end` только если прошло ≥ N минут с
+предыдущего того же `session.end` в том же session. N = 15 подходит: в
+длинном интерактиве одной сессии достаточно одного checkpoint'а в 15 мин,
+финальный всё равно напишется когда launchd-пингер увидит staleness или
+оркестратор сам решит остановиться.
+
+Регрессионный тест: 5 быстрых user turns подряд → events.ndjson содержит
+один `session.end`, не 5.
+
 ## Priority
 - **H1** (namespace split) — P0, блокирует первый live-запуск без шпаргалки
 - **H5** (README plugin install) — P0, те же грабли наступит каждый новый пользователь
@@ -217,6 +274,10 @@ Next.js+Supabase, игнорируя Python-требования.
 - **H2** (--claude-now без TTY) — P1, не блокирует, но UX грязный
 - **H3** (install-copy drift) — P1, важно когда разрабатываешь сам nightshift
 - **H4** (hooks.json lesson) — done
+- **H7** (constitution stack-block dynamic) — done
+- **H8** (остальной scaffold surface dynamic) — done
+- **H9** (skill subagents не пишут model) — P1, критично для honest cost accounting
+- **H10** (session.end флуд) — P2, шум но не блокер
 
 ## Acceptance
 - Новый пользователь на чистой Mac может пройти `clone → install.sh → /plugin install →
