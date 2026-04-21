@@ -17,20 +17,35 @@ Describe a project in chat, sleep, wake up to a reviewed, deployed implementatio
 
 ## Install (macOS)
 
+Prereqs: `claude` (Claude Code CLI), `codex` (OpenAI Codex CLI, optional — implementer falls back to Claude Sonnet if missing), Node 22, pnpm 10, git.
+
 ```bash
-brew install gh supabase
-npm i -g @openai/codex-cli
+# One-time host setup (if you don't already have these)
+npm i -g @openai/codex-cli   # optional; only needed for Codex-backed implementer
+# (Claude Code CLI install per https://code.claude.com/docs)
+
+# Clone + install nightshift
 git clone https://github.com/3d-wiki-admin/nightshift ~/.nightshift
 cd ~/.nightshift
 ./scripts/install.sh --link-bin
 ```
 
-`--link-bin` drops a symlink to the `nightshift` CLI into `~/.local/bin` or `~/bin` if either is on PATH (no sudo). Use `--system-bin` to place it under `/usr/local/bin` (with sudo). Either way, `install.sh` also packages the self-contained Claude plugin runtime so `/plugin install` works immediately.
+`--link-bin` drops a symlink to the `nightshift` CLI into `~/.local/bin` (no sudo). If `~/.local/bin` is not on PATH, the installer prints a one-line reminder — add `export PATH="$HOME/.local/bin:$PATH"` to your shell rc and re-source it.
 
-Inside Claude Code:
+### Install the Claude plugin
+
+Claude Code ≥ 2.1 installs plugins via marketplaces, not direct paths. The repo ships its own single-plugin marketplace at `.claude-plugin/marketplace.json`, so the flow is:
+
 ```
-/plugin install ~/.nightshift/claude
+# inside any Claude Code session
+/plugin marketplace add ~/.nightshift
+/plugin install nightshift@nightshift
+/reload-plugins
 ```
+
+Pick **user scope** when prompted — the plugin becomes available in every Claude Code session, in any directory. After `/reload-plugins` you should see `1 plugin · 19 skills · 16 agents · 6 hooks · 0 errors`.
+
+> Commands land under the `/nightshift:` namespace — `/nightshift:plan`, `/nightshift:tasks`, `/nightshift:implement`, etc. Typing `/nightshift:` and hitting Tab enumerates them all.
 
 ## Use — idea-first flow (v1.1 default)
 
@@ -47,25 +62,25 @@ nightshift init ~/dev/your-new-project --claude-now
 
 **Step 2 (Claude):** 6-question intake interview + approval checkpoint.
 ```
-/nightshift intake --project ~/dev/your-new-project
+/nightshift:nightshift intake --project ~/dev/your-new-project
 ```
 
 Answer the questions, review the proposed stack/template/providers/risk-class, say **"да / go / ok"** to approve.
 
 **Step 3 (Claude):** scaffold the project — only after approval.
 ```
-/nightshift confirm-scaffold
+/nightshift:nightshift confirm-scaffold
 ```
 
-**Step 4+ (Claude):** the rest of the pipeline.
+**Step 4+ (Claude):** the rest of the pipeline — all commands namespaced under `/nightshift:`.
 ```
-/plan                 # plan + research + data-model + API
-/analyze              # consistency check
-/tasks                # decompose into the next wave
-/implement            # run the wave
-/review-wave          # adversarial wave review (GPT-5.4, 60 min)
-/sync                 # refresh graphs/index/state/compliance
-/status               # ASCII dashboard
+/nightshift:plan                 # plan + research + data-model + API
+/nightshift:analyze              # consistency check
+/nightshift:tasks                # decompose into the next wave
+/nightshift:implement            # run the wave
+/nightshift:review-wave          # adversarial wave review (GPT-5.4)
+/nightshift:sync                 # refresh graphs/index/state/compliance
+/nightshift:status               # ASCII dashboard
 ```
 
 `/bootstrap` still exists as an internal recovery command — useful when a project's files were accidentally deleted. It is **not** the public entry point; `nightshift init` is.
