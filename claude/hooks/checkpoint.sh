@@ -10,9 +10,20 @@ project="$(ns_project_dir)"
 
 cd "$project"
 
-# Tag only if we're inside a nightshift-managed project (tasks/events.ndjson exists).
-if [ ! -f tasks/events.ndjson ]; then
-  ns_allow
+# Hotfix-2 H10: dedup consecutive session.end events for the same
+# canonical session_id. Without this, every Claude turn boundary
+# produces a session.end + git tag + tasks/history/session-*.summary.md,
+# 27% of overnight events on kw-injector-v1 were noise like this.
+if [ -f tasks/events.ndjson ] && [ -s tasks/events.ndjson ]; then
+  last_line="$(tail -n 1 tasks/events.ndjson)"
+  last_action="$(printf '%s' "$last_line" | jq -r '.action // ""' 2>/dev/null || echo '')"
+  if [ "$last_action" = "session.end" ]; then
+    last_sid="$(printf '%s' "$last_line" | jq -r '.session_id // ""' 2>/dev/null || echo '')"
+    canonical_sid="$(ns_session_id 2>/dev/null || echo '')"
+    if [ -n "$last_sid" ] && [ "$last_sid" = "$canonical_sid" ]; then
+      ns_allow
+    fi
+  fi
 fi
 
 ts="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -27,10 +38,14 @@ fi
 # Write a brief summary into tasks/history/
 mkdir -p tasks/history
 summary="tasks/history/session-$ts.summary.md"
+events_logged="0"
+if [ -f tasks/events.ndjson ]; then
+  events_logged="$(wc -l <tasks/events.ndjson | tr -d ' ')"
+fi
 cat >"$summary" <<EOF
 # Session summary — $ts
 
-Events logged: $(wc -l <tasks/events.ndjson | tr -d ' ')
+Events logged: $events_logged
 Tag: $tag
 EOF
 
