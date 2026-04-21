@@ -471,6 +471,74 @@ skeleton кода — `claude-opus-4.7`. Разрешить **градацию**
 - CHANGELOG-строка «Opus spend на волне-skeleton (20 tasks) упало с X до Y
   токенов» с реальными цифрами из до/после замера
 
+## H14. Pinger не различает «Claude умер» от «Claude ждёт ответ пользователя»
+
+### Симптом (live на kw-injector-v1 2026-04-21)
+Пользователь поставил launchd-пингер на overnight run. Orchestrator во время
+работы задал approval-вопрос пользователю и заснул в ожидании ответа. Ответа
+не пришло — пользователь спал. Last event в events.ndjson старше 15 мин →
+пингер считает сессию stale → запускает `claude --continue` → но сессия
+физически жива, процесс ждёт stdin. `claude --continue` либо конфликтует,
+либо просто не помогает. Работа стоит до утра.
+
+Это архитектурный промах **v1.0**: пингер спроектирован под сценарий
+«процесс упал», но интерактивный approval-wait выглядит снаружи идентично.
+Оба = «нет событий > 15 мин».
+
+### Fix — три слоя в порядке от простого к сложному
+
+**Слой A (P1) — пингер СПЕРВА смотрит на тип последнего события.**
+`core/scripts/health-ping.mjs::main()`: перед `attemptUnstick`:
+```js
+const lastEvent = events.at(-1);
+if (lastEvent && lastEvent.action === 'question.asked') {
+  // Not stale — waiting for human. Emit session.paused with pointer
+  // to the question + notify via `say` on Darwin + morning-digest flag.
+  // Do NOT spawn claude --continue — it can't answer the question.
+  await appendEvent(logPath, {
+    agent: 'health-pinger',
+    action: 'session.paused',
+    outcome: 'success',
+    notes: `orchestrator awaiting human approval on ${lastEvent.payload?.question_id || 'open question'}. Recover: open the Claude session and answer.`
+  });
+  if (process.platform === 'darwin') {
+    spawn('say', ['nightshift is waiting for your answer'], { detached: true });
+  }
+  return;
+}
+```
+То же для `task.blocked` (risk_class=approval-required без matching decision) —
+пингер нужен молчать, не дёргать `claude --continue`.
+
+**Слой B (P1) — morning-digest подсвечивает open questions сверху.**
+`core/scripts/morning-digest.mjs`: пересчитать `question.asked` минус
+`question.answered` — всё что осталось идёт в секцию «**⚠ waiting for
+your answer**» в начале дайджеста, не в конце.
+
+**Слой C (P2) — push-уведомление в Claude через launchctl.**
+На Darwin можно через `osascript -e 'display notification ...'` вытолкнуть
+alert в Notification Center. Пользователь увидит что ночью появился вопрос
+и разбудится / ответит. Ключ — не спамить: одно уведомление на появление
+новой question.asked, не на каждый пинг.
+
+### Acceptance
+- `health-ping.mjs` регрессия: фикстура events.ndjson с последним
+  `question.asked` → pinger.unstuck НЕ вызывается, зато пишется
+  `session.paused` с ссылкой на вопрос
+- Morning digest на такой же фикстуре → секция «waiting for your answer»
+  в топе, список вопросов с question_id + payload.question
+- `say` (Darwin) вызывается только при ПЕРВОМ обнаружении неотвеченного
+  вопроса (хранить sentinel file `.nightshift/last-notified-question`)
+
+### Что НЕ чинит (честно)
+- Пользователь всё равно должен проснуться и ответить — это не обход
+  approval-required, это приоритетное уведомление. approval-required —
+  safety-фича, её обход был бы багом.
+- Если Claude-сессия реально умерла И последнее событие совпало с
+  `question.asked` — слой A по ошибке не возьмёт resume. Это редкий
+  случай: добавить pingloop timeout (напр., 3 пинга подряд на одном
+  `question.asked` → всё же пробуем `claude --continue`).
+
 ## Priority
 - **H1** (namespace split) — P0, блокирует первый live-запуск без шпаргалки
 - **H5** (README plugin install) — P0, те же грабли наступит каждый новый пользователь
@@ -485,6 +553,7 @@ skeleton кода — `claude-opus-4.7`. Разрешить **градацию**
 - **H11** (rich status dashboard) — P1, живой monitoring overnight — пользовательская просьба
 - **H12** (auto-install launchd + token handoff) — P1 часть-1 (launchd default-yes), P2 часть-2 (budget sentinel)
 - **H13** (router tuning, spark для mechanical, reviewer не-Opus) — P1 часть-A+B (task-decomposer + reviewer grade), P2 часть-C (context-packer/doc-syncer на spark)
+- **H14** (pinger vs approval-wait) — P1 слой A+B (skip resume on question.asked + morning-digest приоритет), P2 слой C (push-уведомление)
 
 ## Acceptance
 - Новый пользователь на чистой Mac может пройти `clone → install.sh → /plugin install →
