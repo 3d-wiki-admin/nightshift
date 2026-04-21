@@ -11,6 +11,7 @@ import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { EventStore, buildState, sessionId } from '../event-store/src/index.mjs';
+import { openQuestions } from '../event-store/src/open-questions.mjs';
 import { appendEvent } from './dispatch.mjs';
 
 const STALE_MIN = 15;
@@ -26,9 +27,33 @@ async function main() {
   const store = new EventStore(logPath);
   const events = await store.all();
   const state = buildState(events);
+  const sid = state.session_id || sessionId();
+  const open = openQuestions(events);
+
+  if (open.length) {
+    const openQuestionIds = [...new Set(open.map(question => question.id))].sort();
+    const joinedIds = openQuestionIds.join(', ');
+    const notes = `orchestrator awaiting human approval on ${joinedIds} (${openQuestionIds.length} open). Recover: open the Claude session and answer.`;
+
+    await appendEvent(logPath, {
+      session_id: sid,
+      agent: 'health-pinger',
+      action: 'session.paused',
+      notes,
+      payload: { open_question_ids: openQuestionIds }
+    });
+    await appendEvent(logPath, {
+      session_id: sid,
+      agent: 'health-pinger',
+      action: 'pinger.ping',
+      payload: { source: 'launchd', project: projectDir, skipped: 'awaiting_human' }
+    });
+
+    await maybeNotifyAwaitingHuman(projectDir, openQuestionIds);
+    return;
+  }
 
   const now = Date.now();
-  const sid = state.session_id || sessionId();
   await appendEvent(logPath, {
     session_id: sid,
     agent: 'health-pinger',
@@ -151,6 +176,34 @@ async function pauseTask(projectDir, st, logPath, sessionId) {
     outcome: 'failure',
     notes: `3 consecutive unstick attempts failed; task moved to paused.md. Recovery: ${recovery}`
   });
+}
+
+async function maybeNotifyAwaitingHuman(projectDir, openQuestionIds) {
+  if (process.platform !== 'darwin') return;
+
+  const sentinelPath = path.join(projectDir, '.nightshift', 'last-notified-questions');
+  const key = [...openQuestionIds].sort().join(',');
+  let previous = '';
+
+  try {
+    previous = (await fs.readFile(sentinelPath, 'utf8')).trim();
+  } catch {}
+
+  if (previous !== key) {
+    try {
+      const child = spawn('say', ['nightshift is waiting for your answer'], {
+        detached: true,
+        stdio: 'ignore'
+      });
+      child.on('error', () => {});
+      child.unref();
+    } catch {}
+  }
+
+  try {
+    await fs.mkdir(path.dirname(sentinelPath), { recursive: true });
+    await fs.writeFile(sentinelPath, key, 'utf8');
+  } catch {}
 }
 
 async function readFailCounts(projectDir) {

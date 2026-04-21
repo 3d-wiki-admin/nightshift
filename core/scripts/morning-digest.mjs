@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { EventStore, buildState, sessionId } from '../event-store/src/index.mjs';
+import { openQuestions } from '../event-store/src/open-questions.mjs';
 import { appendEvent } from './dispatch.mjs';
 
 function yyyymmdd(d = new Date()) {
@@ -18,6 +19,15 @@ function fmt(n) {
   if (n > 1e6) return `${(n / 1e6).toFixed(2)}M`;
   if (n > 1e3) return `${(n / 1e3).toFixed(1)}k`;
   return String(n);
+}
+
+function formatOpenQuestionLine(question) {
+  const parts = [];
+  if (question.wave != null) parts.push(`wave ${question.wave}`);
+  if (question.task_id) parts.push(`task ${question.task_id}`);
+  const suffix = parts.length ? ` (${parts.join(', ')})` : '';
+  const text = question.payload?.question || '(no question text)';
+  return `- ${question.id}${suffix}: ${text}`;
 }
 
 async function main() {
@@ -31,6 +41,7 @@ async function main() {
   const store = new EventStore(logPath);
   const events = await store.all();
   const state = buildState(events);
+  const unresolvedQuestions = openQuestions(events);
 
   const since = Date.now() - 12 * 3600 * 1000;
   const overnight = events.filter(e => new Date(e.ts).getTime() >= since);
@@ -54,6 +65,11 @@ async function main() {
     `Events in last 12h: ${overnight.length}`,
     `Overnight tokens: ${fmt(nightTokens)}   |   cost: $${nightCost.toFixed(4)}`,
     '',
+    ...(unresolvedQuestions.length ? [
+      `## ⚠ Waiting for your answer`,
+      ...unresolvedQuestions.map(formatOpenQuestionLine),
+      ''
+    ] : []),
     `## Accepted (${accepted.length})`,
     ...(accepted.length ? accepted.map(t => `- ${t}`) : ['_(none)_']),
     '',

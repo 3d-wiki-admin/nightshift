@@ -58,6 +58,7 @@ test('health-ping appends pinger.ping via dispatch.appendEvent (single-writer in
 
 test('morning-digest appends via dispatch.appendEvent and generates a digest file', async () => {
   const project = tmpProject();
+  const homeDir = tmpProject();
   const logPath = await bootstrap(project, [
     {
       event_id: 'ev_01HXYZ000000000000000AAA',
@@ -71,7 +72,7 @@ test('morning-digest appends via dispatch.appendEvent and generates a digest fil
 
   const res = spawnSync('node', [MORNING_DIGEST, project], {
     encoding: 'utf8',
-    env: { ...process.env, NIGHTSHIFT_DIGEST_VOICE: '0' }
+    env: { ...process.env, HOME: homeDir, NIGHTSHIFT_DIGEST_VOICE: '0' }
   });
   assert.equal(res.status, 0, `morning-digest exited ${res.status}: ${res.stderr}`);
 
@@ -82,4 +83,5 @@ test('morning-digest appends via dispatch.appendEvent and generates a digest fil
   assert.match(lastEvent.session_id, /^sess_[0-9A-HJKMNP-TV-Z]{20,40}$/);
 
   await fs.rm(project, { recursive: true, force: true });
+  await fs.rm(homeDir, { recursive: true, force: true });
 });
