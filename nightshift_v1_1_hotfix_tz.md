@@ -267,6 +267,52 @@ wave.reviewed) тонут. Для анализа приходится фильт
 Регрессионный тест: 5 быстрых user turns подряд → events.ndjson содержит
 один `session.end`, не 5.
 
+## H11. Rich status dashboard — `nightshift status --dashboard [--watch]`
+
+### Запрос
+Пользователь во время ночного прогона хочет в соседнем терминале видеть живую
+картинку: где пайплайн, какая волна в процентах, какие задачи в каком статусе
+(ожидает/импл/ревью/ок/ошибка), какие вопросы открыты, сколько токенов/денег
+потрачено, какие guard-события произошли. Без помех основной Claude-сессии.
+
+Сейчас `nightshift status` выдаёт 3 строки: session_id, zone, event count. Этого
+мало для live мониторинга.
+
+### Дизайн
+Расширить `core/scripts/project-status.mjs`:
+
+- `--dashboard` (и дефолт если не задан `--json`/`--compact`): рендерит ASCII-панель:
+  - pipeline progress (intake → scaffold → plan → analyze → tasks → implement → deploy) с галочками/in-progress/pending
+  - активная волна с progress bar `[██████░░░░]` + `accepted/total`
+  - per-task строка: `TASK-ID name <status> <model>` (из events `task.contracted`,
+    `task.dispatched`, `task.reviewed`, `task.accepted`, `task.rejected`)
+  - open questions (`question.asked` без парного `question.answered`)
+  - guard/gate summary за последний час
+  - budget: `tokens.input/output/cached` + оценка $ через `core/schemas/costs.json`
+- `--watch [N]` (default N=10 сек): очистить экран + перерисовать каждые N сек.
+  Безопасный для concurrent reader: events.ndjson append-only, fstat+reseek без
+  блокировки.
+- `--json`: машиночитаемая форма тех же данных (для внешних интеграций/тестов).
+
+### Slash-команда
+`claude/commands/status.md` уже есть, но зовёт старый CLI без флагов. Обновить на
+`nightshift status "$PROJECT" --dashboard`. Пользователь из Claude-сессии будет
+вводить `/nightshift:status` и получать full board в одном ответе.
+
+### Почему не прямо сейчас
+Во время активного ночного прогона kw-injector-v1 трогать scripts/dispatch/hooks
+не будем — риск гонки событий при переключении code path'ов. Делается утром или
+по сигналу.
+
+### Acceptance
+- `nightshift status <path> --dashboard` печатает ≥ 7 секций (pipeline, wave,
+  tasks, questions, guards, budget, last-event)
+- `--watch` рефрешит без перечитывания события сначала (использует tail-position
+  offset)
+- Unit test: fixture events.ndjson + 3 волны → ассертить что dashboard выдаёт
+  корректные проценты, counts, и обнаруживает неотвеченные questions
+- Slash-команда `/nightshift:status` возвращает dashboard (не raw CLI output)
+
 ## Priority
 - **H1** (namespace split) — P0, блокирует первый live-запуск без шпаргалки
 - **H5** (README plugin install) — P0, те же грабли наступит каждый новый пользователь
@@ -278,6 +324,7 @@ wave.reviewed) тонут. Для анализа приходится фильт
 - **H8** (остальной scaffold surface dynamic) — done
 - **H9** (skill subagents не пишут model) — P1, критично для honest cost accounting
 - **H10** (session.end флуд) — P2, шум но не блокер
+- **H11** (rich status dashboard) — P1, живой monitoring overnight — пользовательская просьба
 
 ## Acceptance
 - Новый пользователь на чистой Mac может пройти `clone → install.sh → /plugin install →
