@@ -5,7 +5,7 @@ description: ASCII dashboard of wave/task state + token ledger + top-cost tasks.
 Run the project-status script directly (no subagent — this is pure display):
 
 ```bash
-nightshift status "$PWD"
+nightshift status "$PROJECT" --dashboard
 ```
 
 After the ASCII dashboard, print:

@@ -237,15 +237,25 @@ G1-005 runs: infra-provisioner WebFetches Vercel docs, runs preflight, creates p
 
 /status:
 
-groceries  session=sess_01KPJZ...
-context_zone: green   events=147   tokens=452k   cost=$1.97
+=== nightshift - groceries ===
+Session sess_01KPJZ...  uptime 9h  zone green  last-event 42s ago
 
-✓ wave 1 (accepted)  tag=wave-1-end-20260420-0824
-      ✓ G1-001   safe              gpt-5.4         q=0.92
-      ✓ G1-002   safe              gpt-5.4         q=0.88
-      ✓ G1-003   review-required   gpt-5.3-codex   q=0.91
-      ✓ G1-004   review-required   gpt-5.3-codex   q=0.90
-      ✓ G1-005   approval-required gpt-5.3-codex   q=0.89
+PIPELINE
+  ✓ intake     (session.start{stage:intake})
+  ✓ scaffold   (decision.recorded{kind:intake_approval})
+  ✓ plan       (plan.completed)
+  ✓ analyze    (analyze.completed)
+  ✓ tasks      (task.contracted)
+  ✓ implement  (task.dispatched)
+  ◐ accept     (wave.accepted)
+  ◌ deploy     (task.accepted{task_id~/(deploy|prod|ship|release)/i})
+
+WAVES
+  Wave 1  ✓ accepted  [####################] 100% [5/5]
+
+BUDGET
+  in 412,000   out 40,000   cached 0
+  ~$1.82 (24h) / ~$1.97 (all-time)
 ```
 
 User opens the preview URL on their phone, types "banana", roommate's phone shows it. Success criteria met.
